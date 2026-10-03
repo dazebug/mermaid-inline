@@ -1,0 +1,15 @@
+{
+  "name": "mermaid-inline",
+  "description": "Mermaid Inline: draw the Mermaid diagrams in Claude Code replies, as pictures in Ghostty, cmux and kitty and as Unicode box drawing in other terminals",
+  "owner": {
+    "name": "dazebug",
+    "url": "https://github.com/dazebug"
+  },
+  "plugins": [
+    {
+      "name": "mermaid-inline",
+      "source": "./",
+      "description": "Draws the Mermaid diagrams in Claude's replies: as pictures in Ghostty, cmux and kitty, and as Unicode box drawing in other terminals"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "mermaid-inline-renderer",
+  "private": true,
+  "description": "beautiful-mermaid and resvg for mermaid-inline's bin/render.mjs",
+  "license": "MIT",
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "beautiful-mermaid": "1.1.3"
+  }
+}

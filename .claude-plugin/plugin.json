@@ -1,0 +1,93 @@
+{
+  "name": "mermaid-inline",
+  "displayName": "Mermaid Inline",
+  "version": "0.1.0",
+  "description": "Draws the Mermaid diagrams in Claude's replies: as pictures in Ghostty, cmux and kitty, and as Unicode box drawing in other terminals",
+  "author": {
+    "name": "dazebug",
+    "url": "https://github.com/dazebug"
+  },
+  "homepage": "https://github.com/dazebug/mermaid-inline",
+  "repository": "https://github.com/dazebug/mermaid-inline",
+  "documentationUrl": "https://github.com/dazebug/mermaid-inline#readme",
+  "supportUrl": "https://github.com/dazebug/mermaid-inline/issues",
+  "privacyPolicyUrl": "https://github.com/dazebug/mermaid-inline#privacy",
+  "license": "MIT",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "flowchart",
+    "terminal",
+    "ghostty",
+    "kitty",
+    "mod"
+  ],
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "How to show diagrams",
+      "description": "auto (the default) draws pictures in terminals that show kitty-graphics pictures (Ghostty, cmux, kitty; not inside tmux) and Unicode box drawing elsewhere. on always draws pictures, text always draws box drawing, off leaves the code blocks as written.",
+      "default": "auto"
+    },
+    "teach_claude": {
+      "type": "boolean",
+      "title": "Tell Claude it can draw diagrams",
+      "description": "Adds a short section to the system prompt, only where diagrams are drawn as pictures, saying that mermaid code blocks are shown as diagrams and which kinds are supported.",
+      "default": true
+    },
+    "theme": {
+      "type": "string",
+      "title": "Diagram theme",
+      "description": "auto (the default) draws on your terminal's own background in its text color. Or one of zinc-light, zinc-dark, tokyo-night, tokyo-night-storm, tokyo-night-light, catppuccin-mocha, catppuccin-latte, nord, nord-light, dracula, github-light, github-dark, solarized-light, solarized-dark, one-dark, drawn on its own background.",
+      "default": "auto"
+    },
+    "colors": {
+      "type": "string",
+      "title": "Color overrides",
+      "description": "Colors that win over the theme's, as key=#rrggbb pairs separated by spaces: bg (background), fg (text), line (edges), accent (arrow heads, highlights, chart series), muted (secondary text), surface (node fill), border (node outline). For example: accent=#d77757 line=#5c6370",
+      "default": ""
+    },
+    "font": {
+      "type": "string",
+      "title": "Label font",
+      "description": "auto (the default) uses Helvetica Neue on macOS and DejaVu Sans, Noto Sans or Liberation Sans on Linux; or the family name of a font installed on this machine. Hangul and other CJK text falls back to a system font that has it.",
+      "default": "auto"
+    },
+    "text_scale": {
+      "type": "number",
+      "title": "Label size",
+      "description": "Diagram label size relative to your terminal's text. A diagram wider than the terminal is shrunk to fit.",
+      "default": 1,
+      "min": 0.3,
+      "max": 3
+    },
+    "node_path": {
+      "type": "string",
+      "title": "Node.js executable",
+      "description": "The node that runs the renderer, as a command on PATH or an absolute path.",
+      "default": "node"
+    },
+    "font_metrics": {
+      "type": "string",
+      "title": "Terminal font geometry",
+      "description": "auto (the default) reads your terminal's font from its config (Ghostty, cmux, kitty) and works out the two numbers below the way the terminal does; they apply only when that fails. manual always uses them.",
+      "default": "auto"
+    },
+    "cell_aspect": {
+      "type": "number",
+      "title": "Cell height over width",
+      "description": "Your terminal cell's height divided by its width, in pixels. 2.125 is Ghostty's default font, JetBrains Mono at 13pt; Fira Code at 12pt on a Retina display is 2.0. Diagrams look stretched when it is off.",
+      "default": 2.125,
+      "min": 1,
+      "max": 4
+    },
+    "line_height": {
+      "type": "number",
+      "title": "Cell height in ems",
+      "description": "The cell height in ems of your terminal font: 1.308 for JetBrains Mono at 13pt, 1.25 for Fira Code at 12pt. Sets how large labels are next to your text.",
+      "default": 1.308,
+      "min": 1,
+      "max": 2
+    }
+  }
+}

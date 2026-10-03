@@ -5,7 +5,7 @@ import { hasMermaid, splitReply } from '../hooks/parse'
 const DIAGRAM = '```mermaid\ngraph LR\n  A --> B\n```'
 
 test('a mermaid block splits the reply into text, diagram, text', () => {
-  const reply = `Here is the flow:\n\n${DIAGRAM}\n\nThat is all.`
+  const reply = 'Here is the flow:\n\n' + DIAGRAM + '\n\nThat is all.'
   expect(splitReply(reply)).toEqual([
     { kind: 'text', text: 'Here is the flow:' },
     { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: DIAGRAM },
@@ -20,7 +20,7 @@ test('other code blocks stay in the text, whole', () => {
 })
 
 test('a mermaid fence inside a longer fence is an example, not a diagram', () => {
-  const reply = `\`\`\`\`markdown\n${DIAGRAM}\n\`\`\`\``
+  const reply = '````markdown\n' + DIAGRAM + '\n````'
   expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
 })
 
@@ -45,7 +45,7 @@ test('a closing fence must be as long as the opening one and carry no info strin
 })
 
 test('two diagrams side by side give two segments and no empty text', () => {
-  expect(splitReply(`${DIAGRAM}\n\n${DIAGRAM}`).map(segment => segment.kind)).toEqual(['mermaid', 'mermaid'])
+  expect(splitReply(DIAGRAM + '\n\n' + DIAGRAM).map(segment => segment.kind)).toEqual(['mermaid', 'mermaid'])
 })
 
 test('a line of backticks with a backtick after it is no fence', () => {

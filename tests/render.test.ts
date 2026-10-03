@@ -3,7 +3,7 @@ import { expect, test, type Engine } from 'claude-code/testing'
 
 const SESSION = { cwd: '/tmp', surface: 'terminal' as const, isInteractive: true }
 const DIAGRAM = '```mermaid\ngraph LR\n  A --> B\n```'
-const REPLY = `Before.\n\n${DIAGRAM}\n\nAfter.`
+const REPLY = 'Before.\n\n' + DIAGRAM + '\n\nAfter.'
 
 // The engine beneath the plugin: no terminal variables, default settings, a
 // cache that answers `cached` for every key (or holds nothing), and a message
@@ -19,7 +19,7 @@ function engine(on: On, cached?: unknown) {
   on('ui.render', { component: 'AssistantMessage' }, async ($, e) => ({
     type: 'Text',
     props: {},
-    children: [`${e.props.isFirstOfReply ? '● ' : ''}${e.props.text}`],
+    children: [(e.props.isFirstOfReply ? '● ' : '') + e.props.text],
   }))
 }
 
@@ -56,7 +56,7 @@ test('a drawn diagram replaces its code block with the picture', { options: { mo
 test('a diagram that opens the reply carries the bullet', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
   engine(on, { file: '/tmp/diagram.png', columns: 40, rows: 9 })
   await $.session.start(SESSION)
-  const ui = await draw($, `${DIAGRAM}\n\nAfter.`)
+  const ui = await draw($, DIAGRAM + '\n\nAfter.')
   const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
   expect(texts).toEqual(['⏺', 'After.'])
 })
@@ -80,5 +80,5 @@ test('with mode off a reply is drawn as written', { options: { mode: 'off' } }, 
   engine(on, { file: '/tmp/diagram.png', columns: 40, rows: 9 })
   await $.session.start(SESSION)
   const ui = await draw($, REPLY)
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([`● ${REPLY}`])
+  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['● ' + REPLY])
 })

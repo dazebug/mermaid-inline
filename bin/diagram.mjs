@@ -146,7 +146,9 @@ export function renderPicture(item, request) {
   const inner = svg.replace(/^<svg[^>]*>/, `<svg x="${x}" y="${y}" width="${drawnWidth}" height="${drawnHeight}" viewBox="0 0 ${width} ${height}">`)
   const radius = Math.round(fit.fontPx * 0.5)
   const backdrop = card ? `<rect x="${x}" y="${y}" width="${drawnWidth}" height="${drawnHeight}" rx="${radius}" ry="${radius}" fill="${colors.bg}"/>` : ''
-  const page = `<svg xmlns="http://www.w3.org/2000/svg" width="${fit.pixelWidth}" height="${fit.pixelHeight}" viewBox="0 0 ${fit.pixelWidth} ${fit.pixelHeight}">${backdrop}${inner}</svg>`
+  // The page takes the SVG namespace the diagram itself declares.
+  const namespace = /xmlns="([^"]+)"/.exec(raw)?.[1] ?? ''
+  const page = `<svg xmlns="${namespace}" width="${fit.pixelWidth}" height="${fit.pixelHeight}" viewBox="0 0 ${fit.pixelWidth} ${fit.pixelHeight}">${backdrop}${inner}</svg>`
   const png = new Resvg(page, {
     fitTo: { mode: 'original' },
     font: { loadSystemFonts: false, fontFiles: fonts.files, defaultFontFamily: fonts.sans?.family ?? 'sans-serif' },

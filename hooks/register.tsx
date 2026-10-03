@@ -156,20 +156,20 @@ async function probeTerminal($: EngineInterface, name: string, measureFont: bool
 // Finds a diagram's drawing in memory or in the on-disk cache, and queues it
 // for rendering when neither has it.
 async function lookup($: EngineInterface, job: Job): Promise<Entry | undefined> {
-  const key = keyOf(job)
-  const known = entries.get(key)
-  if (known !== undefined || queue.has(key) || inflight.has(key)) return known
-  const sidecar = `${config.cacheDir}/${key}.json`
+  const id = keyOf(job)
+  const known = entries.get(id)
+  if (known !== undefined || queue.has(id) || inflight.has(id)) return known
+  const sidecar = `${config.cacheDir}/${id}.json`
   try {
     if (await $.fs.exists(sidecar)) {
       const entry = JSON.parse(await $.fs.read(sidecar)) as Entry
-      entries.set(key, entry)
+      entries.set(id, entry)
       return entry
     }
   } catch {
     // An unreadable cache entry is rendered again.
   }
-  queue.set(key, job)
+  queue.set(id, job)
   return undefined
 }
 
@@ -267,7 +267,7 @@ export const register: Register = (on, options) => {
       return { text: [`Diagrams: drawn as Unicode box drawing (${why})`, ...notes].join('\n') }
     }
     const overrides = Object.entries(config.overrides)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([name, value]) => `${name}=${value}`)
       .join(' ')
     const lines = [
       'Diagrams: drawn as pictures',

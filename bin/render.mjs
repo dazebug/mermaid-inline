@@ -22,7 +22,7 @@ for (const item of request.items) {
   } catch (error) {
     result = { key: item.key, error: String(error?.message ?? error).split('\n')[0].slice(0, 200) }
   }
-  fs.writeFileSync(path.join(request.outDir, `${item.key}.json`), JSON.stringify(result))
+  fs.writeFileSync(path.join(request.outDir, item.key + '.json'), JSON.stringify(result))
   results.push(result)
 }
 process.stdout.write(JSON.stringify({ results }))

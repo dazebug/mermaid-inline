@@ -26,7 +26,7 @@ export function normalizeColor(value) {
   const hex = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/.exec(text)
   if (!hex) return undefined
   const digits = hex[1].length === 3 ? [...hex[1]].map(c => c + c).join('') : hex[1]
-  return `#${digits}`
+  return '#' + digits
 }
 
 function unquote(value) {

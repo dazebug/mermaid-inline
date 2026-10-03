@@ -33,7 +33,7 @@ function parseColor(text) {
 function formatColor(c) {
   const byte = v => Math.round(Math.min(255, Math.max(0, v)))
   if (c.a <= 0.001) return 'transparent'
-  if (c.a >= 0.999) return `#${[c.r, c.g, c.b].map(v => byte(v).toString(16).padStart(2, '0')).join('')}`
+  if (c.a >= 0.999) return '#' + [c.r, c.g, c.b].map(v => byte(v).toString(16).padStart(2, '0')).join('')
   return `rgba(${byte(c.r)},${byte(c.g)},${byte(c.b)},${Number(c.a.toFixed(3))})`
 }
 

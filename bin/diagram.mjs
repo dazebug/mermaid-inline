@@ -96,7 +96,7 @@ export function diagramColors({ theme = 'auto', overrides = {}, terminal = {}, p
 // The SVG with plain colors, no web font import and the chosen fonts.
 export function prepareSvg(svg, colors, fonts) {
   const base = {}
-  for (const key of COLOR_KEYS) if (colors[key]) base[`--${key}`] = colors[key]
+  for (const name of COLOR_KEYS) if (colors[name]) base['--' + name] = colors[name]
   return resolveCss(svg, base)
     .replace(/@import url\([^)]*\);?/g, '')
     .replace(/(text\s*\{\s*font-family:)[^;}]*/g, `$1 ${fonts.sansStack}`)
@@ -153,7 +153,7 @@ export function renderPicture(item, request) {
   })
     .render()
     .asPng()
-  const file = path.join(request.outDir, `${item.key}.png`)
+  const file = path.join(request.outDir, item.key + '.png')
   fs.writeFileSync(file, png)
   return { key: item.key, file, columns: fit.columns, rows: fit.rows }
 }

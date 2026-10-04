@@ -121,7 +121,7 @@ Mermaid Inline collects no data and sends nothing off your machine: it has no se
 - Copying a reply out of the terminal copies the picture placeholders, not the Mermaid source.
 - beautiful-mermaid lays diagrams out its own way, which differs from mermaid.js in places, such as the spacing and where edge labels sit, and it may not read the newest syntax.
 - Claude's thinking, shown with ctrl+o, keeps its code blocks as written: Claude Code gives mods no way to redraw it.
-- In the ctrl+o transcript view, a reply that holds a diagram can have a blank row too many under the message header, and none above the text after a diagram: Claude Code leaves those rows out in that view, and a plugin cannot tell it from the normal one. With `showMessageTimestamps` on when the session starts, the rows match.
+- Where Claude Code puts a header above each message, as in the ctrl+o transcript view, a reply that holds a diagram can have a blank row too many under the header and none above the text after a diagram: Claude Code leaves those rows out there, and a plugin cannot tell that view from the normal one.
 
 ## Troubleshooting
 

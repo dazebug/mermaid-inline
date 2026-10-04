@@ -67,6 +67,8 @@ let config = {
   overrides: {} as Partial<Record<ColorKey, string>>,
   font: 'auto',
   prefersDark: true,
+  // Claude Code puts a header above each message (showMessageTimestamps).
+  headers: false,
 }
 // What bin/terminal.mjs made of the terminal, and what the options held, for /mermaid-inline.
 let fontReport = 'not looked up'
@@ -220,7 +222,7 @@ export const register: Register = (on, options) => {
       KITTY_WINDOW_ID: await $.env.get('KITTY_WINDOW_ID'),
       TMUX: await $.env.get('TMUX'),
     }
-    const settings = (await $.settings.read()) as { theme?: unknown }
+    const settings = (await $.settings.read()) as { theme?: unknown; showMessageTimestamps?: unknown }
     const cacheHome = (await $.env.get('XDG_CACHE_HOME')) ?? `${(await $.env.get('HOME')) ?? ''}/.cache`
     const theme = stringOption(options, 'theme', 'auto').toLowerCase()
     const parsed = parseColors(stringOption(options, 'colors', ''))
@@ -237,6 +239,7 @@ export const register: Register = (on, options) => {
       overrides: parsed.colors,
       font: stringOption(options, 'font', 'auto'),
       prefersDark: !(typeof settings.theme === 'string' && settings.theme.startsWith('light')),
+      headers: settings.showMessageTimestamps === true,
     }
     fontReport = 'set by hand (font_metrics is manual)'
     colorReport = 'not looked up in this terminal'
@@ -302,12 +305,14 @@ export const register: Register = (on, options) => {
     // Each run of markdown is drawn by the plugins beneath and the engine, as
     // a reply of its own; each diagram is drawn here, or, until it has a
     // drawing or when it cannot be drawn, left to them as the code block.
-    // The engine draws a block that does not open the reply with no gutter
-    // and with a blank row above it: such a block gets the gutter here, and
-    // every other block after the first a blank row.
+    // Each part brings the blank row above it, as Claude Code's drawing of a
+    // block does, so whoever places it adds none: one row, except at the top
+    // of a reply under a message header (showMessageTimestamps). The ctrl+o
+    // view has headers too, but a mod cannot tell it apart from the normal one.
+    // Claude Code draws a block that does not open the reply with no gutter,
+    // and under headers with no blank row: such a block gets both here.
     const rows = []
     let isFirst = e.props.isFirstOfReply
-    let isTop = true
     for (const segment of segments) {
       let drawing: Picture | Art | undefined
       if (segment.kind === 'mermaid') {
@@ -319,11 +324,9 @@ export const register: Register = (on, options) => {
       if (segment.kind === 'text' || drawing === undefined) {
         const text = segment.kind === 'text' ? segment.text : segment.raw
         const drawn = await next({ ...e, props: { ...e.props, text, isFirstOfReply: isFirst } })
-        if (isTop) {
-          rows.push(drawn)
-        } else if (drawn.type === 'engine' && !isFirst) {
+        if (drawn.type === 'engine' && !isFirst) {
           rows.push(
-            <Box flexDirection="row">
+            <Box flexDirection="row" marginTop={config.headers ? 1 : 0}>
               <Box width={2} flexShrink={0} />
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 {drawn}
@@ -331,12 +334,12 @@ export const register: Register = (on, options) => {
             </Box>,
           )
         } else {
-          rows.push(<Box marginTop={1}>{drawn}</Box>)
+          rows.push(drawn)
         }
       } else {
         const header = segment.kind === 'mermaid' ? (segment.source.trim().split('\n')[0] ?? '').trim() : ''
         rows.push(
-          <Box flexDirection="row" marginTop={isTop ? 0 : 1} paddingRight={1}>
+          <Box flexDirection="row" marginTop={isFirst && config.headers ? 0 : 1} paddingRight={1}>
             <Box width={2} flexShrink={0}>
               <Text>{isFirst ? '⏺' : ' '}</Text>
             </Box>
@@ -353,7 +356,6 @@ export const register: Register = (on, options) => {
         )
       }
       isFirst = false
-      isTop = false
     }
     return <Box flexDirection="column">{rows}</Box>
   })

@@ -5,27 +5,78 @@ const SESSION = { cwd: '/tmp', surface: 'terminal' as const, isInteractive: true
 const DIAGRAM = '```mermaid\ngraph LR\n  A --> B\n```'
 const REPLY = 'Before.\n\n' + DIAGRAM + '\n\nAfter.'
 
-// The engine beneath the plugin: no terminal variables, default settings, a
-// cache that answers `cached` for every key (or holds nothing), and a message
-// drawing that shows the text it was handed, a bullet marking the reply's first.
-function engine(on: On, cached?: unknown) {
+// The engine beneath the plugin: no terminal variables, default settings or
+// those given, a cache that answers `cached` for every key (or holds nothing),
+// and a message drawing that shows the text it was handed, a bullet marking the
+// reply's first, or an engine element when `engineElement` is set.
+function engine(on: On, cached?: unknown, options: { engineElement?: boolean; settings?: Record<string, unknown> } = {}) {
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('env.get', async () => ({ value: undefined }))
-  on('settings.read', async () => ({ value: {} }))
+  on('settings.read', async () => ({ value: options.settings ?? {} }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
   on('clock.every', async () => ({ value: undefined }))
   on('fs.exists', async () => ({ value: cached !== undefined }))
   on('fs.read', async () => ({ value: JSON.stringify(cached) }))
-  on('ui.render', { component: 'AssistantMessage' }, async ($, e) => ({
-    type: 'Text',
-    props: {},
-    children: [(e.props.isFirstOfReply ? '● ' : '') + e.props.text],
-  }))
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e) => {
+    if (options.engineElement) return { type: 'engine', ref: 1 } as never
+    return { type: 'Text', props: {}, children: [(e.props.isFirstOfReply ? '● ' : '') + e.props.text] }
+  })
 }
 
-async function draw($: Engine, text: string) {
-  return $.ui.mount({ plugin: 'mermaid-inline', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true } })
+async function draw($: Engine, text: string, isFirstOfReply = true) {
+  return $.ui.mount({ plugin: 'mermaid-inline', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply } })
 }
+
+const PICTURE = { file: '/tmp/diagram.png', columns: 40, rows: 9 }
+
+async function rowsOf(ui: Awaited<ReturnType<typeof draw>>) {
+  const drawn = await ui.drawn()
+  return drawn.type === 'Box' ? (drawn.children ?? []) : []
+}
+
+const ENGINE_IN_GUTTER = [{ type: 'Box', props: { width: 2 } }, { type: 'Box', children: [{ type: 'engine', ref: 1 }] }]
+
+test('a diagram that opens the reply starts with the blank row Claude Code puts above a reply', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE)
+  await $.session.start(SESSION)
+  const ui = await draw($, DIAGRAM + '\n\nAfter.')
+  expect((await rowsOf(ui))[0]).toMatchObject({ type: 'Box', props: { marginTop: 1 } })
+})
+
+test('with message timestamps shown, a diagram that opens the reply starts under the header with no blank row', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE, { settings: { showMessageTimestamps: true } })
+  await $.session.start(SESSION)
+  const ui = await draw($, DIAGRAM + '\n\nAfter.')
+  expect((await rowsOf(ui))[0]).toMatchObject({ type: 'Box', props: { marginTop: 0 } })
+})
+
+test('a diagram in a part that does not open the reply brings its own blank row', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE)
+  await $.session.start(SESSION)
+  const ui = await draw($, DIAGRAM, false)
+  expect((await rowsOf(ui))[0]).toMatchObject({ type: 'Box', props: { marginTop: 1 } })
+})
+
+test('a block Claude Code draws gets the gutter whenever it does not open the reply', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE, { engineElement: true })
+  await $.session.start(SESSION)
+  const ui = await draw($, REPLY, false)
+  expect((await rowsOf(ui))[0]).toMatchObject({ type: 'Box', props: { flexDirection: 'row', marginTop: 0 }, children: ENGINE_IN_GUTTER })
+})
+
+test('a tree from a mod below is placed as it comes, with no margin added', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE)
+  await $.session.start(SESSION)
+  const ui = await draw($, REPLY)
+  expect((await rowsOf(ui))[2]).toMatchObject({ type: 'Text', children: ['After.'] })
+})
+
+test('with message timestamps shown, a later block Claude Code draws gets the blank row it leaves out', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE, { engineElement: true, settings: { showMessageTimestamps: true } })
+  await $.session.start(SESSION)
+  const ui = await draw($, REPLY)
+  expect((await rowsOf(ui))[2]).toMatchObject({ type: 'Box', props: { flexDirection: 'row', marginTop: 1 }, children: ENGINE_IN_GUTTER })
+})
 
 test('a reply without a diagram is left to the engine', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
   engine(on)

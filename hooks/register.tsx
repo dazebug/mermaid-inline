@@ -302,12 +302,14 @@ export const register: Register = (on, options) => {
     // Each run of markdown is drawn by the plugins beneath and the engine, as
     // a reply of its own; each diagram is drawn here, or, until it has a
     // drawing or when it cannot be drawn, left to them as the code block.
-    // The engine draws a block that does not open the reply with no gutter
-    // and with a blank row above it: such a block gets the gutter here, and
-    // every other block after the first a blank row.
+    // Each part brings the blank row above it, as Claude Code's drawing of a
+    // block does in the normal view, so whoever places it adds none. Where
+    // Claude Code puts a message header above a reply instead, as in the ctrl+o
+    // view, it leaves that row out, and a mod cannot tell those views apart.
+    // Claude Code draws a block that does not open the reply with no gutter:
+    // such a block gets the gutter here.
     const rows = []
     let isFirst = e.props.isFirstOfReply
-    let isTop = true
     for (const segment of segments) {
       let drawing: Picture | Art | undefined
       if (segment.kind === 'mermaid') {
@@ -319,9 +321,7 @@ export const register: Register = (on, options) => {
       if (segment.kind === 'text' || drawing === undefined) {
         const text = segment.kind === 'text' ? segment.text : segment.raw
         const drawn = await next({ ...e, props: { ...e.props, text, isFirstOfReply: isFirst } })
-        if (isTop) {
-          rows.push(drawn)
-        } else if (drawn.type === 'engine' && !isFirst) {
+        if (drawn.type === 'engine' && !isFirst) {
           rows.push(
             <Box flexDirection="row">
               <Box width={2} flexShrink={0} />
@@ -331,12 +331,12 @@ export const register: Register = (on, options) => {
             </Box>,
           )
         } else {
-          rows.push(<Box marginTop={1}>{drawn}</Box>)
+          rows.push(drawn)
         }
       } else {
         const header = segment.kind === 'mermaid' ? (segment.source.trim().split('\n')[0] ?? '').trim() : ''
         rows.push(
-          <Box flexDirection="row" marginTop={isTop ? 0 : 1} paddingRight={1}>
+          <Box flexDirection="row" marginTop={1} paddingRight={1}>
             <Box width={2} flexShrink={0}>
               <Text>{isFirst ? '⏺' : ' '}</Text>
             </Box>
@@ -353,7 +353,6 @@ export const register: Register = (on, options) => {
         )
       }
       isFirst = false
-      isTop = false
     }
     return <Box flexDirection="column">{rows}</Box>
   })

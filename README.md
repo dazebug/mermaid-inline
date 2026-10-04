@@ -34,7 +34,7 @@ A diagram is drawn when its code block stands at the top level of the reply, clo
 
 The plugin adds a short section to Claude's system prompt, only in sessions where it draws pictures, that says Mermaid blocks are shown as diagrams, which kinds are drawn, and to keep diagrams small with short labels. Set `teach_claude` to `false` to leave the system prompt alone; Claude then draws diagrams only when it writes them on its own or you ask for one.
 
-It works beside [LaTeX Inline](https://github.com/dazebug/latex-inline): in a reply that holds both diagrams and math, each plugin draws its own part.
+It works beside [LaTeX Inline](https://github.com/dazebug/latex-inline): in a reply that holds both diagrams and math, each plugin draws its own part, whichever runs first. Use LaTeX Inline 0.3.3 or later with it, so the two leave the same blank rows between their parts.
 
 ## Design
 
@@ -121,6 +121,7 @@ Mermaid Inline collects no data and sends nothing off your machine: it has no se
 - Copying a reply out of the terminal copies the picture placeholders, not the Mermaid source.
 - beautiful-mermaid lays diagrams out its own way, which differs from mermaid.js in places, such as the spacing and where edge labels sit, and it may not read the newest syntax.
 - Claude's thinking, shown with ctrl+o, keeps its code blocks as written: Claude Code gives mods no way to redraw it.
+- Where Claude Code puts a header above each message, as in the ctrl+o transcript view, a reply that holds a diagram can have a blank row too many under the header and none above the text after a diagram: Claude Code leaves those rows out there, and a plugin cannot tell that view from the normal one.
 
 ## Troubleshooting
 

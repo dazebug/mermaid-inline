@@ -1,0 +1,24 @@
+name: Bug report
+description: A diagram is drawn wrong, not drawn, or a reply looks broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw and what you expected instead. A screenshot helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: reply
+    attributes:
+      label: Reply text
+      description: The part of Claude's reply that shows the problem, as text.
+      render: markdown
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: The output of `claude --version`, the plugin version from `claude plugin list`, your terminal and whether it runs inside tmux, and what `/mermaid-inline` prints.
+    validations:
+      required: true

@@ -5,13 +5,10 @@ export type Segment =
   | { kind: 'text'; text: string; indent?: number }
   | { kind: 'mermaid'; source: string; raw: string; indent?: number }
 
-// An opening code fence: three or more backticks or tildes, then the info
-// string.
 const OPENING = /^(`{3,}|~{3,})(.*)$/
 const CLOSING = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
-// A list marker, a bullet or a number, followed by a space, a tab or nothing.
 const LIST_MARKER = /^(?:[-*+]|(\d{1,9})[.)])(?=[ \t]|$)/
-// A thematic break, which wins over a list marker: `* * *` is a rule.
+// Test it before LIST_MARKER: `* * *` is a thematic break, not a list item.
 const THEMATIC_BREAK = /^(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/
 const ATX_HEADING = /^#{1,6}(?:[ \t]|$)/
 // The line under a paragraph that makes it a heading.
@@ -138,7 +135,8 @@ function enter(line: string, containers: Container[], empty: Container | null): 
 // text, block quotes, the lines that lazily continue a paragraph in them,
 // and fenced code blocks, also one opened on a list marker's line. The other
 // blocks hold nothing for diagrams and are read as text: indented code,
-// thematic breaks, headings and paragraphs.
+// thematic breaks, headings and paragraphs. HTML blocks are not read: a fence
+// inside one is read as a fence.
 function scan(lines: string[]): Line[] {
   const out: Line[] = []
   let containers: Container[] = []
@@ -269,8 +267,8 @@ function pushText(out: Segment[], lines: string[]): void {
 }
 
 // Splits a reply into its Mermaid code blocks and the markdown around them.
-// A Mermaid block is a fence whose info string starts with `mermaid`, closed
-// before its list item or the reply ends: a reply still streaming in leaves
+// A Mermaid block is a fence whose info string's first word is `mermaid`, in
+// any case, closed before its list item or the reply ends: a reply still streaming in leaves
 // an open fence as text until it closes. The fence may stand at the top
 // level or in a list item, also on the item's marker line, whose markers
 // then stay in the text as items with nothing in them. One in a block quote

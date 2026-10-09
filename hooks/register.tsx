@@ -309,10 +309,11 @@ export const register: Register = (on, options) => {
     // Claude Code draws a block that does not open the reply with no gutter:
     // such a block gets the gutter here.
     // A part from inside a list item, a diagram or the rest of the item after
-    // it, sits that item's indent further in, and its text comes without the
-    // indent: drawn with it, a nested bullet would come out at the top level.
-    // A diagram there starts at the indent, under the item's text, instead of
-    // being centered like one at the top level.
+    // it, is moved in here by that item's indent. Its text comes without the
+    // indent, because leading spaces do not indent markdown drawn on its own:
+    // a nested bullet would come out at the top level. A diagram there starts
+    // at the indent, under the item's text, instead of being centered like one
+    // at the top level.
     const rows = []
     let isFirst = e.props.isFirstOfReply
     for (const segment of segments) {

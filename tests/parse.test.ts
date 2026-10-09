@@ -34,8 +34,34 @@ test('tildes, a longer fence and an info string after the language are read', ()
   expect(splitReply(reply)).toEqual([{ kind: 'mermaid', source: 'sequenceDiagram\n  A->>B: hi', raw: reply }])
 })
 
-test('a fence indented in a list item stays in the text, so the list stays whole', () => {
-  const reply = '1. First\n   ```mermaid\n   graph LR\n     A --> B\n   ```\n2. Second'
+test("a fence in a list item is a diagram at the item's indent, and the rest of the item keeps that indent", () => {
+  const reply = '1. First\n   ```mermaid\n   graph LR\n     A --> B\n   ```\n\n   - more on the first\n2. Second'
+  expect(splitReply(reply)).toEqual([
+    { kind: 'text', text: '1. First' },
+    { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 3 },
+    { kind: 'text', text: '- more on the first', indent: 3 },
+    { kind: 'text', text: '2. Second' },
+  ])
+})
+
+test('after a diagram in a nested item, each enclosing item keeps its own indent', () => {
+  const reply = '- A\n  - B\n    ```mermaid\n    graph LR\n      A --> B\n    ```\n    - under B\n  - C\nTop.'
+  expect(splitReply(reply)).toEqual([
+    { kind: 'text', text: '- A\n  - B' },
+    { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 4 },
+    { kind: 'text', text: '- under B', indent: 4 },
+    { kind: 'text', text: '- C', indent: 2 },
+    { kind: 'text', text: 'Top.' },
+  ])
+})
+
+test('a fence indented four spaces outside a list is an indented code block, not a diagram', () => {
+  const reply = 'Example:\n\n    ```mermaid\n    graph LR\n    ```'
+  expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
+})
+
+test('another code block in a list item keeps a mermaid fence written inside it as text', () => {
+  const reply = '1. Write this:\n   ````markdown\n   ' + DIAGRAM.split('\n').join('\n   ') + '\n   ````'
   expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
 })
 

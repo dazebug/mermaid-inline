@@ -32,6 +32,8 @@ Flowcharts (`graph` and `flowchart`, in any direction), `sequenceDiagram`, `stat
 
 A diagram is drawn when its code block is closed and stands at the top level of the reply or in a list item. One in a list item is drawn at the item's indent, and the rest of the list keeps its own indents. One inside a block quote stays code, and so does one still streaming in, until its closing fence arrives. A diagram wider than the terminal is shrunk to fit, and one taller than the screen is shrunk toward the screen's height, its labels no smaller than 60% of their size.
 
+Math in a label, written between `$` signs as in LaTeX (or `$$`, `\(…\)`, `\[…\]`), is drawn as the Unicode text LaTeX Inline writes math as where it shows no pictures: `$x^2$` as x², `$\alpha \le \beta$` as α ≤ β, `$\frac{a+b}{c}$` as (a + b)/c. A `$` that doesn't open math, as in `$5`, stays as written.
+
 The plugin adds a short section to Claude's system prompt, only in sessions where it draws pictures, that says Mermaid blocks are shown as diagrams, which kinds are drawn, and to keep diagrams small with short labels. Set `teach_claude` to `false` to leave the system prompt alone; Claude then draws diagrams only when it writes them on its own or you ask for one.
 
 It works beside [LaTeX Inline](https://github.com/dazebug/latex-inline): in a reply that holds both diagrams and math, each plugin draws its own part, whichever runs first. Use LaTeX Inline 0.3.3 or later with it, so the two leave the same blank rows between their parts.
@@ -135,6 +137,7 @@ Load your clone for one session with `claude --plugin-dir ./mermaid-inline`; Cla
 
 - Diagrams are laid out by [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) from Craft, whose text renderer is based on Alexander Grooff's [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii), with [ELK](https://github.com/kieler/elkjs) for layout, and rasterized by [resvg](https://github.com/RazrFalcon/resvg).
 - The terminal cell is measured the way [Ghostty](https://github.com/ghostty-org/ghostty) (MIT) computes it in `src/font/Metrics.zig`, with code shared with [LaTeX Inline](https://github.com/dazebug/latex-inline).
+- Math in labels is turned into Unicode text by a copy of [LaTeX Inline](https://github.com/dazebug/latex-inline)'s converter, `hooks/tex.ts`.
 - The cache file names come from [cyrb53](https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js), bryc's public-domain string hash.
 
 ## License

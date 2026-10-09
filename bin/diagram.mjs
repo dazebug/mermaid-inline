@@ -39,12 +39,17 @@ const COLOR_KEYS = ['bg', 'fg', 'line', 'accent', 'muted', 'surface', 'border']
 // Scripts the label font may lack: Hangul, kana, Han and the rest of CJK.
 const WIDE_SCRIPT = /[ᄀ-ᇿ⺀-鿿가-힯豈-﫿＀-￯]/
 
-// Terminal cells a line of text takes: Hangul, CJK and emoji take two.
+// Combining marks, which the terminal draws over the letter before them in
+// no cell of their own: accents, and the arrow of a vector.
+const COMBINING = /[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]+/g
+
+// Terminal cells a line of text takes: Hangul, CJK and emoji take two,
+// combining marks none.
 export function cellWidth(text) {
   let width = 0
   for (const ch of text) {
     const c = ch.codePointAt(0) ?? 0
-    if ((c >= 0x0300 && c <= 0x036f) || (c >= 0x200b && c <= 0x200f)) continue
+    if (ch.replace(COMBINING, '') === '' || (c >= 0x200b && c <= 0x200f)) continue
     const wide =
       (c >= 0x1100 && c <= 0x115f) ||
       (c >= 0x2e80 && c <= 0xa4cf) ||
@@ -160,8 +165,13 @@ export function renderPicture(item, request) {
   return { key: item.key, file, columns: fit.columns, rows: fit.rows }
 }
 
+// beautiful-mermaid gives each combining mark a cell of its own, which the
+// terminal does not draw: a space after the marks fills their cells, so the
+// box lines after them stay in their columns.
 export function renderText(item) {
-  const art = renderMermaidASCII(item.source, { colorMode: 'none' }).replace(/\s+$/g, '')
+  const art = renderMermaidASCII(item.source, { colorMode: 'none' })
+    .replace(COMBINING, marks => marks + ' '.repeat(marks.length))
+    .replace(/\s+$/g, '')
   const lines = art.split('\n').map(line => line.replace(/\s+$/, ''))
   const columns = Math.max(0, ...lines.map(cellWidth))
   if (columns === 0) throw new Error('nothing to draw')

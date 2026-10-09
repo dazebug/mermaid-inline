@@ -70,6 +70,17 @@ test('Hangul and CJK take two cells', () => {
   assert.equal(cellWidth('요청'), 4)
 })
 
+test('a combining mark, an accent or an arrow over a letter, takes no cell', () => {
+  assert.equal(cellWidth('x\u0304 = y\u0302'), 5)
+  assert.equal(cellWidth('v\u20d7'), 1)
+})
+
+test("box drawing keeps its columns where a label's letters carry combining marks", () => {
+  const art = renderText({ key: 'k', source: 'graph LR\n  A[x\u0304 = y\u0302] --> B[v\u20d7]', kind: 'text', maxColumns: 80 })
+  const widths = art.text.split('\n').map(cellWidth)
+  assert.deepEqual(widths, widths.map(() => art.columns), art.text)
+})
+
 test('box drawing for a flowchart, and an error for a diagram too wide', () => {
   const item = { key: 'k', source: 'graph LR\n  A --> B', kind: 'text', maxColumns: 80 }
   const art = renderText(item)

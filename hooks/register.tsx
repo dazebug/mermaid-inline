@@ -2,9 +2,10 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { splitReply } from './parse'
 import { diagramStyle, parseColors, type ColorKey, type DiagramStyle } from './support'
+import { mathToUnicode } from './tex'
 
 // Part of every cache key: bump it when bin/render.mjs draws differently.
-const VERSION = 1
+const VERSION = 2
 // Pixels per terminal row in the pictures; the terminal scales each picture
 // to its cells, so this only sets how sharp they are.
 const ROW_PX = 48
@@ -320,8 +321,11 @@ export const register: Register = (on, options) => {
       const indent = segment.indent ?? 0
       let drawing: Picture | Art | undefined
       if (segment.kind === 'mermaid') {
-        const entry = await lookup($, { source: segment.source, kind, maxColumns: Math.max(10, width - indent), maxRows: height })
-        const lastKey = `${kind}|${segment.source}`
+        // beautiful-mermaid draws no math, so a label's math goes in as the
+        // Unicode text it reads as.
+        const source = mathToUnicode(segment.source)
+        const entry = await lookup($, { source, kind, maxColumns: Math.max(10, width - indent), maxRows: height })
+        const lastKey = `${kind}|${source}`
         if (isDrawing(entry)) lastDrawn.set(lastKey, entry)
         drawing = entry === undefined ? lastDrawn.get(lastKey) : isDrawing(entry) ? entry : undefined
       }

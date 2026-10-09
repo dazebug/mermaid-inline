@@ -6,20 +6,16 @@ const DIAGRAM = '```mermaid\ngraph LR\n  A --> B\n```'
 const REPLY = 'Before.\n\n' + DIAGRAM + '\n\nAfter.'
 
 // The engine beneath the plugin: no terminal variables, default settings, a
-// cache that answers `cached` for every key (or holds nothing) and lists the
-// files asked for in `asked`, and a message drawing that shows the text it
-// was handed, a bullet marking the reply's first, or an engine element when
-// `engineElement` is set.
-function engine(on: On, cached?: unknown, options: { engineElement?: boolean; asked?: string[] } = {}) {
+// cache that answers `cached` for every key (or holds nothing), and a message
+// drawing that shows the text it was handed, a bullet marking the reply's
+// first, or an engine element when `engineElement` is set.
+function engine(on: On, cached?: unknown, options: { engineElement?: boolean } = {}) {
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('env.get', async () => ({ value: undefined }))
   on('settings.read', async () => ({ value: {} }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
   on('clock.every', async () => ({ value: undefined }))
-  on('fs.exists', async ($, e) => {
-    options.asked?.push(e.path)
-    return { value: cached !== undefined }
-  })
+  on('fs.exists', async () => ({ value: cached !== undefined }))
   on('fs.read', async () => ({ value: JSON.stringify(cached) }))
   on('ui.render', { component: 'AssistantMessage' }, async ($, e) => {
     if (options.engineElement) return { type: 'engine', ref: 1 } as never
@@ -104,19 +100,7 @@ test('a diagram that opens the reply carries the bullet', { options: { mode: 'on
   expect(texts).toEqual(['⏺', 'After.'])
 })
 
-test("a diagram's math is drawn as Unicode text: it is the same drawing as the diagram written with that text", { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
-  const asked: string[] = []
-  engine(on, PICTURE, { asked })
-  await $.session.start(SESSION)
-  await draw($, '```mermaid\ngraph LR\n  A[x²] --> B[α]\n```')
-  const ui = await draw($, '```mermaid\ngraph LR\n  A[$x^2$] --> B[$\\alpha$]\n```')
-  // The second diagram's drawing is found in memory under the first's key,
-  // so the cache on disk is asked once.
-  expect(asked).toHaveLength(1)
-  expect((await ui.find({ type: 'Image' }))?.props).toMatchObject({ source: { file: PICTURE.file } })
-})
-
-const IN_LIST ='1. First\n   ```mermaid\n   graph LR\n     A --> B\n   ```\n\n   - more on the first\n2. Second'
+const IN_LIST = '1. First\n   ```mermaid\n   graph LR\n     A --> B\n   ```\n\n   - more on the first\n2. Second'
 
 test("a diagram in a list item is drawn at the item's indent, and the rest of the item beneath it", { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
   engine(on, PICTURE, { engineElement: true })

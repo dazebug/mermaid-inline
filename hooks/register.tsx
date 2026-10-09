@@ -2,7 +2,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { splitReply } from './parse'
 import { diagramStyle, parseColors, type ColorKey, type DiagramStyle } from './support'
-import { mathToUnicode } from './tex'
+import { mathSpans, type MathSpan } from './tex'
 
 // Part of every cache key: bump it when bin/render.mjs draws differently.
 const VERSION = 2
@@ -41,7 +41,9 @@ const DIAGRAM_INSTRUCTION = [
 type Picture = { file: string; columns: number; rows: number }
 type Art = { text: string; columns: number; rows: number }
 type Entry = Picture | Art | { error: string }
-type Job = { source: string; kind: 'png' | 'text'; maxColumns: number; maxRows: number }
+// `math`: the formulas in `source`, which the renderer puts in as Unicode
+// text where the diagram's structure stays as it was.
+type Job = { source: string; math: MathSpan[]; kind: 'png' | 'text'; maxColumns: number; maxRows: number }
 type Options = Readonly<Record<string, unknown>>
 
 const entries = new Map<string, Entry>()
@@ -101,7 +103,7 @@ function drawingSettings() {
 // cyrb53 by bryc, public domain (linked in the README): a short stable key
 // for the cache file names.
 function keyOf(job: Job): string {
-  const s = `${VERSION}|${JSON.stringify(drawingSettings())}|${job.kind}|${job.maxColumns}|${job.maxRows}|${job.source}`
+  const s = `${VERSION}|${JSON.stringify(drawingSettings())}|${job.kind}|${job.maxColumns}|${job.maxRows}|${job.source}|${JSON.stringify(job.math)}`
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
   for (let i = 0; i < s.length; i++) {
@@ -321,11 +323,11 @@ export const register: Register = (on, options) => {
       const indent = segment.indent ?? 0
       let drawing: Picture | Art | undefined
       if (segment.kind === 'mermaid') {
-        // beautiful-mermaid draws no math, so a label's math goes in as the
-        // Unicode text it reads as.
-        const source = mathToUnicode(segment.source)
-        const entry = await lookup($, { source, kind, maxColumns: Math.max(10, width - indent), maxRows: height })
-        const lastKey = `${kind}|${source}`
+        // beautiful-mermaid draws no math, so the renderer gets each formula's
+        // Unicode text with the diagram.
+        const job: Job = { source: segment.source, math: mathSpans(segment.source), kind, maxColumns: Math.max(10, width - indent), maxRows: height }
+        const entry = await lookup($, job)
+        const lastKey = `${kind}|${segment.source}`
         if (isDrawing(entry)) lastDrawn.set(lastKey, entry)
         drawing = entry === undefined ? lastDrawn.get(lastKey) : isDrawing(entry) ? entry : undefined
       }

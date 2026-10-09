@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-import { THEMES, renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid'
+import { THEMES, parseMermaid, renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid'
 
 import { resolveCss } from './css.mjs'
 import { pickFonts } from './fonts.mjs'
@@ -129,9 +129,45 @@ export function fitToCells({ width, height }, request, maxColumns, maxRows = MAX
   return { scale, columns, rows, pixelWidth: Math.round(columns * cellPx), pixelHeight: rows * rowPx, fontPx }
 }
 
+// What parseMermaid reads of a diagram, its labels aside, or undefined when
+// it can't read the diagram.
+function structureOf(source) {
+  try {
+    const graph = parseMermaid(source)
+    const subgraph = sub => [sub.id, sub.nodeIds, sub.children.map(subgraph)]
+    return JSON.stringify({
+      direction: graph.direction,
+      nodes: [...graph.nodes.values()].map(node => [node.id, node.shape]),
+      edges: graph.edges.map(edge => [edge.source, edge.target, edge.style, edge.hasArrowStart, edge.hasArrowEnd, edge.label === undefined]),
+      subgraphs: graph.subgraphs.map(subgraph),
+    })
+  } catch {
+    return undefined
+  }
+}
+
+// A diagram's source with the formulas the mod found in it put in as their
+// Unicode text, one at a time and only where parseMermaid reads the diagram
+// the same way: the text can hold a bracket or a bar, which can end a label
+// or turn it into another shape. A diagram parseMermaid can't read, such as
+// a sequence diagram, takes every formula.
+export function withMath(source, math = []) {
+  const base = structureOf(source)
+  let out = source
+  let shift = 0
+  for (const { start, end, text } of math) {
+    const tried = out.slice(0, start + shift) + text + out.slice(end + shift)
+    if (base !== undefined && structureOf(tried) !== base) continue
+    out = tried
+    shift += text.length - (end - start)
+  }
+  return out
+}
+
 export function renderPicture(item, request) {
   const { colors, card } = diagramColors(request)
-  const raw = renderMermaidSVG(item.source, {
+  const source = withMath(item.source, item.math)
+  const raw = renderMermaidSVG(source, {
     ...Object.fromEntries(COLOR_KEYS.filter(key => colors[key]).map(key => [key, colors[key]])),
     transparent: true,
     padding: card ? CARD_PADDING : PADDING,
@@ -141,7 +177,7 @@ export function renderPicture(item, request) {
   if (!(width > 0 && height > 0)) throw new Error('nothing to draw')
 
   const fonts = pickFonts({ font: request.font })
-  if (!WIDE_SCRIPT.test(item.source)) fonts.files = [fonts.sans?.file, fonts.mono?.file].filter(Boolean)
+  if (!WIDE_SCRIPT.test(source)) fonts.files = [fonts.sans?.file, fonts.mono?.file].filter(Boolean)
   const svg = prepareSvg(raw, colors, fonts)
   const fit = fitToCells({ width, height }, request, item.maxColumns, item.maxRows)
   const drawnWidth = width * fit.scale
@@ -165,13 +201,27 @@ export function renderPicture(item, request) {
   return { key: item.key, file, columns: fit.columns, rows: fit.rows }
 }
 
-// beautiful-mermaid gives each combining mark a cell of its own, which the
-// terminal does not draw: a space after the marks fills their cells, so the
-// box lines after them stay in their columns.
+// beautiful-mermaid gives a character one cell per UTF-16 unit: a combining
+// mark gets a cell the terminal does not draw, and a letter beyond the BMP,
+// such as 𝒜, two where the terminal draws one. Spaces after them fill those
+// cells, so the box lines after them stay in their columns.
+function fillCells(art) {
+  let out = ''
+  let owed = 0
+  for (const ch of art) {
+    const drawn = cellWidth(ch)
+    if (drawn > 0 && owed > 0) {
+      out += ' '.repeat(owed)
+      owed = 0
+    }
+    out += ch
+    owed += Math.max(0, ch.length - drawn)
+  }
+  return out + ' '.repeat(owed)
+}
+
 export function renderText(item) {
-  const art = renderMermaidASCII(item.source, { colorMode: 'none' })
-    .replace(COMBINING, marks => marks + ' '.repeat(marks.length))
-    .replace(/\s+$/g, '')
+  const art = fillCells(renderMermaidASCII(withMath(item.source, item.math), { colorMode: 'none' })).replace(/\s+$/g, '')
   const lines = art.split('\n').map(line => line.replace(/\s+$/, ''))
   const columns = Math.max(0, ...lines.map(cellWidth))
   if (columns === 0) throw new Error('nothing to draw')

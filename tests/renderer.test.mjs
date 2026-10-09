@@ -6,7 +6,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 
 import { mixColors, resolveCss } from '../bin/css.mjs'
-import { cellWidth, diagramColors, fitToCells, renderPicture, renderText } from '../bin/diagram.mjs'
+import { cellWidth, diagramColors, fitToCells, renderPicture, renderText, withMath } from '../bin/diagram.mjs'
 
 const JETBRAINS = { rowPx: 48, cellRatio: 2.125, lineEm: 1.308, textScale: 1 }
 
@@ -79,6 +79,40 @@ test("box drawing keeps its columns where a label's letters carry combining mark
   const art = renderText({ key: 'k', source: 'graph LR\n  A[x\u0304 = y\u0302] --> B[v\u20d7]', kind: 'text', maxColumns: 80 })
   const widths = art.text.split('\n').map(cellWidth)
   assert.deepEqual(widths, widths.map(() => art.columns), art.text)
+})
+
+test('box drawing keeps its columns where a label holds a one-cell letter from beyond the BMP', () => {
+  const script = String.fromCodePoint(0x1d49c)
+  const art = renderText({ key: 'k', source: `graph LR\n  A[${script}] --> B[x]`, kind: 'text', maxColumns: 80 })
+  const widths = art.text.split('\n').map(cellWidth)
+  assert.deepEqual(widths, widths.map(() => art.columns), art.text)
+})
+
+// The spans the mod sends for formulas in `source`: each TeX with its text.
+function spans(source, pairs) {
+  return pairs.map(([tex, text]) => {
+    const start = source.indexOf(tex)
+    return { start, end: start + tex.length, text }
+  })
+}
+
+test("a formula goes in as its text only where the diagram's structure stays as it was", () => {
+  const source = 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[$x^2$]'
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$\\lbrack y\\rbrack$', '[y]'], ['$x^2$', 'x\u00b2']])
+  assert.equal(withMath(source, math), 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[x\u00b2]')
+})
+
+test('a diagram the parser does not read takes every formula, and one without math is left alone', () => {
+  const source = 'sequenceDiagram\n  A->>B: $\\lvert x\\rvert$ and $x^2$'
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$x^2$', 'x\u00b2']])
+  assert.equal(withMath(source, math), 'sequenceDiagram\n  A->>B: |x| and x\u00b2')
+  assert.equal(withMath('graph LR\n  A --> B'), 'graph LR\n  A --> B')
+})
+
+test('the picture and the box drawing both draw the math', () => {
+  const source = 'graph LR\n  A[$x^2$] --> B'
+  const art = renderText({ key: 'k', source, math: spans(source, [['$x^2$', 'x\u00b2']]), kind: 'text', maxColumns: 80 })
+  assert.ok(art.text.includes('x\u00b2') && !art.text.includes('$'), art.text)
 })
 
 test('box drawing for a flowchart, and an error for a diagram too wide', () => {

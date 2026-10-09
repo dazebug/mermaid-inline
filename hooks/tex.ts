@@ -467,11 +467,15 @@ export function texToUnicode(tex: string): string {
 }
 
 const DIGIT = /[0-9]/
-// Text that is Mermaid's own syntax, an arrow, a link or a quote, which no
-// formula holds: a dollar paired across it is two dollars of text.
-const MERMAID_SYNTAX = /--|==|->|"/
+// Text that is Mermaid's own syntax, an arrow, a link, a quote or the `&`
+// that joins nodes, which no formula holds: a dollar paired across it is two
+// dollars of text.
+const MERMAID_SYNTAX = /--|==|->|"|&/
+const OPENER: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
 
 type Formula = { end: number; tex: string }
+// A formula in a diagram's source: where it starts and ends, and its text.
+export type MathSpan = { start: number; end: number; text: string }
 
 // The formula a $ at `open` starts, by LaTeX Inline's rules for the math in
 // a reply: where it ends and its TeX, or null when the dollar is text.
@@ -514,31 +518,40 @@ function plainOf(tex: string): string | null {
   }
 }
 
-function convertLine(line: string): string {
-  let out = ''
-  let i = 0
-  while (i < line.length) {
-    const ch = line[i] ?? ''
-    const formula = ch === '$' ? formulaAt(line, i) : ch === '\\' ? bracketedAt(line, i) : null
-    const plain = formula && !MERMAID_SYNTAX.test(formula.tex) ? plainOf(formula.tex) : null
-    if (formula && plain !== null) {
-      out += plain
-      i = formula.end
-    } else if (ch === '\\') {
-      out += line.slice(i, i + 2)
-      i += 2
-    } else {
-      out += ch
-      i++
-    }
+// Whether a formula's brackets close in the order they open. One that closes
+// a bracket it did not open reaches out of the label it starts in.
+function balanced(tex: string): boolean {
+  const open: string[] = []
+  for (const ch of tex) {
+    if (ch === '(' || ch === '[' || ch === '{') open.push(ch)
+    else if (OPENER[ch] !== undefined && open.pop() !== OPENER[ch]) return false
   }
-  return out
+  return open.length === 0
 }
 
-// A diagram's source with its math, `$…$`, `$$…$$`, `\(…\)` or `\[…\]`, as
-// the Unicode text LaTeX Inline writes math as where it shows no pictures:
-// x², α ≤ β, (a + b)/c. A formula stays on one line, as a Mermaid statement
-// does.
-export function mathToUnicode(source: string): string {
-  return source.split('\n').map(convertLine).join('\n')
+// The formulas in a diagram's source, `$…$`, `$$…$$`, `\(…\)` or `\[…\]`,
+// each with the Unicode text LaTeX Inline writes it as where it shows no
+// pictures: x², α ≤ β, (a + b)/c. A formula stays on its line, as a Mermaid
+// statement does, and inside its label as far as its TeX tells: its brackets
+// close in order and it holds no Mermaid syntax. Whether its text keeps the
+// diagram's structure is for the renderer to check, which can parse it.
+export function mathSpans(source: string): MathSpan[] {
+  const spans: MathSpan[] = []
+  let offset = 0
+  for (const line of source.split('\n')) {
+    let i = 0
+    while (i < line.length) {
+      const ch = line[i] ?? ''
+      const formula = ch === '$' ? formulaAt(line, i) : ch === '\\' ? bracketedAt(line, i) : null
+      const text = formula && !MERMAID_SYNTAX.test(formula.tex) && balanced(formula.tex) ? plainOf(formula.tex) : null
+      if (formula && text !== null) {
+        spans.push({ start: offset + i, end: offset + formula.end, text })
+        i = formula.end
+      } else {
+        i += ch === '\\' ? 2 : 1
+      }
+    }
+    offset += line.length + 1
+  }
+  return spans
 }

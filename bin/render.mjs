@@ -1,6 +1,6 @@
 // Reads one JSON request on stdin and writes one JSON answer on stdout:
 //
-//   { items: [{ key, source, kind: 'png' | 'text', maxColumns, maxRows }], outDir,
+//   { items: [{ key, source, math: [{ start, end, text }], kind: 'png' | 'text', maxColumns, maxRows }], outDir,
 //     rowPx, cellRatio, lineEm, textScale, theme, overrides: { bg, fg, ... },
 //     terminal: { background, foreground }, prefersDark, font }
 //   -> { results: [{ key, file, columns, rows } | { key, text, columns, rows } | { key, error }] }

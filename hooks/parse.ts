@@ -11,6 +11,16 @@ const OPENING = /^( *)(`{3,}|~{3,})(.*)$/
 // A list item's first line: its indent, its bullet or number, and the spaces
 // before its text, which start at the item's content column.
 const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( {1,4})(?=\S)/
+// The lines that start a new block instead of continuing a paragraph.
+const INTERRUPTS = /^ {0,3}(?:[-*+] +\S|\d{1,9}[.)] +\S|`{3,}|~{3,}|#{1,6}(?: |$)|>|(?:[-*_] *){3,}$)/
+// A heading or a rule ends a paragraph instead of being one.
+const NOT_A_PARAGRAPH = /^ {0,3}(?:#{1,6}(?: |$)|(?:[-*_] *){3,}$)/
+
+type Item = { column: number; id: number }
+type Fence = { start: number; end: number; stop: number; indent: number; column: number; info: string; char: string; length: number }
+// What a line sits in: the list items around it, outermost first, and the
+// fenced code block it opens, if it opens one.
+type Line = { items: Item[]; fence?: Fence }
 
 function indentOf(line: string): number {
   return /^ */.exec(line)?.[0].length ?? 0
@@ -20,24 +30,83 @@ function dedent(line: string, columns: number): string {
   return line.slice(Math.min(columns, indentOf(line)))
 }
 
-function isClosing(line: string, fence: string, maxIndent: number): boolean {
+function isClosing(line: string, fence: Fence): boolean {
   const match = /^( *)(`{3,}|~{3,})\s*$/.exec(line)
-  return match !== null && (match[1]?.length ?? 0) <= maxIndent && match[2]?.[0] === fence[0] && (match[2]?.length ?? 0) >= fence.length
+  return match !== null && (match[1]?.length ?? 0) <= fence.column + 3 && match[2]?.[0] === fence.char && (match[2]?.length ?? 0) >= fence.length
 }
 
-// The content column of the list item that line `i`, indented `indent`
-// columns, belongs to, or 0 at the top level: the nearest line above it that
-// is indented less must be that item's first line.
-function containerColumn(lines: string[], i: number, indent: number): number {
-  for (let j = i - 1; j >= 0; j--) {
-    const line = lines[j] ?? ''
-    if (line.trim() === '' || indentOf(line) >= indent) continue
-    const item = LIST_ITEM.exec(line)
-    if (!item) return 0
-    const column = (item[1]?.length ?? 0) + (item[2]?.length ?? 0) + (item[3]?.length ?? 0)
-    return column <= indent ? column : 0
+// Reads the reply's blocks the way Markdown does, as far as diagrams need
+// them: list items, including the unindented lines that lazily continue an
+// item's paragraph, fenced code blocks, and indented code, whose lines hold
+// nothing. A list marker or a fence inside indented code is text.
+function scan(lines: string[]): Line[] {
+  const out: Line[] = []
+  let items: Item[] = []
+  let nextId = 0
+  let paragraph = false
+  let open: Fence | null = null
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    const blank = line.trim() === ''
+    const indent = indentOf(line)
+    if (open) {
+      // A fenced block in a list item ends with the item.
+      if (blank || indent >= open.column) {
+        out.push({ items })
+        if (isClosing(line, open)) {
+          open.end = i
+          open.stop = i + 1
+          open = null
+        }
+        continue
+      }
+      open.stop = i
+      open = null
+    }
+    if (blank) {
+      out.push({ items })
+      paragraph = false
+      continue
+    }
+    const kept = items.filter(item => item.column <= indent)
+    if (paragraph && kept.length < items.length && !INTERRUPTS.test(line)) {
+      out.push({ items })
+      continue
+    }
+    items = kept
+    const column = items[items.length - 1]?.column ?? 0
+    if (!paragraph && indent >= column + 4) {
+      out.push({ items })
+      continue
+    }
+    const opening = OPENING.exec(line)
+    const char = opening?.[2]?.[0] ?? '`'
+    const info = (opening?.[3] ?? '').trim()
+    // A backtick fence's info string may not hold a backtick.
+    if (opening && indent - column <= 3 && !(char === '`' && info.includes('`'))) {
+      open = { start: i, end: -1, stop: lines.length, indent, column, info, char, length: opening[2]?.length ?? 3 }
+      out.push({ items, fence: open })
+      paragraph = false
+      continue
+    }
+    const marker = LIST_ITEM.exec(line)
+    out.push({ items })
+    if (marker && indent - column <= 3) {
+      items = [...items, { column: indent + (marker[2]?.length ?? 1) + (marker[3]?.length ?? 1), id: nextId++ }]
+      paragraph = true
+      continue
+    }
+    paragraph = !NOT_A_PARAGRAPH.test(line)
   }
-  return 0
+  return out
+}
+
+// The content column of the innermost item around a diagram that a later
+// line still sits in, or 0 once the line is past all of them.
+function anchorOf(items: Item[], around: Item[]): number {
+  let column = 0
+  for (let depth = 0; depth < around.length && items[depth]?.id === around[depth]?.id; depth++) column = around[depth]?.column ?? 0
+  return column
 }
 
 function withIndent<S extends Segment>(segment: S, indent: number): S {
@@ -52,11 +121,9 @@ function pushText(out: Segment[], lines: string[]): void {
 
 // Splits a reply into its Mermaid code blocks and the markdown around them.
 // A Mermaid block is a fence whose info string starts with `mermaid`, closed
-// before its container ends: a reply still streaming in leaves an open fence
-// as text until it closes. A fence at the top level may be indented up to
-// three columns; one in a list item sits at the item's content column, and
-// one indented four or more columns past that is an indented code block, as
-// it is in Markdown.
+// before its list item or the reply ends: a reply still streaming in leaves
+// an open fence as text until it closes. The fence may stand at the top
+// level or in a list item.
 //
 // Cutting a list at a diagram must not flatten it: the rest of the item after
 // the diagram, and then the rest of each item around that one, comes out as
@@ -64,62 +131,41 @@ function pushText(out: Segment[], lines: string[]): void {
 // it had.
 export function splitReply(text: string): Segment[] {
   const lines = text.split('\n')
+  const scanned = scan(lines)
   const out: Segment[] = []
   let pending: string[] = []
   let i = 0
   while (i < lines.length) {
-    const line = lines[i] ?? ''
-    const opening = OPENING.exec(line)
-    const indent = opening?.[1]?.length ?? 0
-    const column = opening && indent > 0 ? containerColumn(lines, i, indent) : 0
-    const fence = opening?.[2] ?? '```'
-    const info = (opening?.[3] ?? '').trim()
-    // A backtick fence's info string may not hold a backtick.
-    if (!opening || indent > column + 3 || (fence[0] === '`' && info.includes('`'))) {
-      pending.push(line)
+    const fence = scanned[i]?.fence
+    if (!fence) {
+      pending.push(lines[i] ?? '')
       i++
       continue
     }
-    // The block ends at its closing fence, or where its list item ends.
-    let end = -1
-    let stop = lines.length
-    for (let j = i + 1; j < lines.length; j++) {
-      const candidate = lines[j] ?? ''
-      if (column > 0 && candidate.trim() !== '' && indentOf(candidate) < column) {
-        stop = j
-        break
-      }
-      if (isClosing(candidate, fence, column + 3)) {
-        end = j
-        break
-      }
-    }
-    if (end < 0) {
-      // A fence that never closes runs to the end of its container: that is code.
-      pending.push(...lines.slice(i, stop))
-      i = stop
-      continue
-    }
-    const block = lines.slice(i, end + 1)
-    i = end + 1
-    const language = info.split(/\s+/)[0]?.toLowerCase() ?? ''
-    if (language !== 'mermaid') {
-      pending.push(...block)
+    const language = fence.info.split(/\s+/)[0]?.toLowerCase() ?? ''
+    if (fence.end < 0 || language !== 'mermaid') {
+      pending.push(...lines.slice(i, fence.stop))
+      i = fence.stop
       continue
     }
     pushText(out, pending)
     pending = []
-    const source = block.slice(1, -1).map(content => dedent(content, indent))
-    out.push(withIndent({ kind: 'mermaid', source: source.join('\n'), raw: block.map(row => dedent(row, column)).join('\n') }, column))
-    let at = column
-    while (at > 0 && i < lines.length) {
+    const block = lines.slice(i, fence.end + 1)
+    const source = block.slice(1, -1).map(content => dedent(content, fence.indent))
+    out.push(withIndent({ kind: 'mermaid', source: source.join('\n'), raw: block.map(row => dedent(row, fence.column)).join('\n') }, fence.column))
+    i = fence.end + 1
+    const around = scanned[fence.start]?.items ?? []
+    while (i < lines.length) {
+      let next = i
+      while (next < lines.length && (lines[next] ?? '').trim() === '') next++
+      const at = next < lines.length ? anchorOf(scanned[next]?.items ?? [], around) : 0
+      if (at === 0) break
       const run: string[] = []
-      while (i < lines.length && ((lines[i] ?? '').trim() === '' || indentOf(lines[i] ?? '') >= at)) {
+      while (i < lines.length && ((lines[i] ?? '').trim() === '' || anchorOf(scanned[i]?.items ?? [], around) === at)) {
         run.push(dedent(lines[i] ?? '', at))
         i++
       }
       for (const segment of splitReply(run.join('\n'))) out.push(withIndent(segment, (segment.indent ?? 0) + at))
-      if (i < lines.length) at = containerColumn(lines, i, indentOf(lines[i] ?? ''))
     }
   }
   pushText(out, pending)

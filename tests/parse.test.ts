@@ -45,7 +45,7 @@ test("a fence in a list item is a diagram at the item's indent, and the rest of 
 })
 
 test('after a diagram in a nested item, each enclosing item keeps its own indent', () => {
-  const reply = '- A\n  - B\n    ```mermaid\n    graph LR\n      A --> B\n    ```\n    - under B\n  - C\nTop.'
+  const reply = '- A\n  - B\n    ```mermaid\n    graph LR\n      A --> B\n    ```\n    - under B\n  - C\n\nTop.'
   expect(splitReply(reply)).toEqual([
     { kind: 'text', text: '- A\n  - B' },
     { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 4 },
@@ -53,6 +53,22 @@ test('after a diagram in a nested item, each enclosing item keeps its own indent
     { kind: 'text', text: '- C', indent: 2 },
     { kind: 'text', text: 'Top.' },
   ])
+})
+
+test('a lazy continuation line keeps the paragraph, and the diagram after it, in the list item', () => {
+  const reply = '- Item\nlazy continuation\n  ```mermaid\n  graph LR\n    A --> B\n  ```\n  - child'
+  expect(splitReply(reply)).toEqual([
+    { kind: 'text', text: '- Item\nlazy continuation' },
+    { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 2 },
+    { kind: 'text', text: '- child', indent: 2 },
+  ])
+})
+
+test('a list marker inside an indented code block is code, and so is a fence under it', () => {
+  const reply = 'Example:\n\n    - Item\n      ```mermaid\n      graph LR\n        A --> B\n      ```'
+  expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
+  const inItem = '1. Item\n\n       - code\n         ```mermaid\n         graph LR\n         ```'
+  expect(splitReply(inItem)).toEqual([{ kind: 'text', text: inItem }])
 })
 
 test('a fence indented four spaces outside a list is an indented code block, not a diagram', () => {

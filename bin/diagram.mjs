@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-import { THEMES, renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid'
+import { THEMES, parseMermaid, renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid'
 
 import { resolveCss } from './css.mjs'
 import { pickFonts } from './fonts.mjs'
@@ -39,12 +39,17 @@ const COLOR_KEYS = ['bg', 'fg', 'line', 'accent', 'muted', 'surface', 'border']
 // Scripts the label font may lack: Hangul, kana, Han and the rest of CJK.
 const WIDE_SCRIPT = /[ᄀ-ᇿ⺀-鿿가-힯豈-﫿＀-￯]/
 
-// Terminal cells a line of text takes: Hangul, CJK and emoji take two.
+// Combining marks, which the terminal draws over the letter before them in
+// no cell of their own: accents, and the arrow of a vector.
+const COMBINING = /[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]+/g
+
+// Terminal cells a line of text takes: Hangul, CJK and emoji take two,
+// combining marks none.
 export function cellWidth(text) {
   let width = 0
   for (const ch of text) {
     const c = ch.codePointAt(0) ?? 0
-    if ((c >= 0x0300 && c <= 0x036f) || (c >= 0x200b && c <= 0x200f)) continue
+    if (ch.replace(COMBINING, '') === '' || (c >= 0x200b && c <= 0x200f)) continue
     const wide =
       (c >= 0x1100 && c <= 0x115f) ||
       (c >= 0x2e80 && c <= 0xa4cf) ||
@@ -124,9 +129,64 @@ export function fitToCells({ width, height }, request, maxColumns, maxRows = MAX
   return { scale, columns, rows, pixelWidth: Math.round(columns * cellPx), pixelHeight: rows * rowPx, fontPx }
 }
 
+// What parseMermaid reads of a diagram, its labels aside, or undefined when
+// it can't read the diagram.
+function structureOf(source) {
+  try {
+    const graph = parseMermaid(source)
+    const subgraph = sub => [sub.id, sub.nodeIds, sub.children.map(subgraph)]
+    return JSON.stringify({
+      direction: graph.direction,
+      nodes: [...graph.nodes.values()].map(node => [node.id, node.shape]),
+      edges: graph.edges.map(edge => [edge.source, edge.target, edge.style, edge.hasArrowStart, edge.hasArrowEnd, edge.label === undefined]),
+      subgraphs: graph.subgraphs.map(subgraph),
+    })
+  } catch {
+    return undefined
+  }
+}
+
+// Characters that are syntax in some diagram's labels: a bracket ends a
+// label or a list, a comma or a semicolon divides one, a bar or a quote
+// ends one.
+const LABEL_SYNTAX = /[[\](){},;|"]/g
+
+// The word that names a diagram's kind: its first, past blank lines and
+// comments.
+function kindOf(source) {
+  const line = source.split('\n').find(row => row.trim() !== '' && !row.trim().startsWith('%%')) ?? ''
+  return line.trim().split(/\s+/)[0] ?? ''
+}
+
+// A diagram's source with the formulas the mod found in it put in as their
+// Unicode text, one at a time and only where the diagram keeps its
+// structure: the text can hold a bracket or a bar, which can end a label or
+// turn it into another shape. It can't be escaped instead: beautiful-mermaid
+// decodes no entity codes, and ends a `[…]` label at its first `]` even inside
+// quotes. A diagram parseMermaid reads must read the same with it. A sequence diagram, whose labels run to the end of their line,
+// takes every formula. Another diagram takes one whose text adds no
+// character that is syntax in a label: `\binom{n}{k}` reads as C(n, k), whose
+// comma would split an XY chart's category in two.
+export function withMath(source, math = []) {
+  const base = structureOf(source)
+  const lineLabels = base === undefined && kindOf(source) === 'sequenceDiagram'
+  let out = source
+  let shift = 0
+  for (const { start, end, text } of math) {
+    const tex = source.slice(start, end)
+    const tried = out.slice(0, start + shift) + text + out.slice(end + shift)
+    const keeps = base !== undefined ? structureOf(tried) === base : lineLabels || [...text.matchAll(LABEL_SYNTAX)].every(([ch]) => tex.includes(ch))
+    if (!keeps) continue
+    out = tried
+    shift += text.length - (end - start)
+  }
+  return out
+}
+
 export function renderPicture(item, request) {
   const { colors, card } = diagramColors(request)
-  const raw = renderMermaidSVG(item.source, {
+  const source = withMath(item.source, item.math)
+  const raw = renderMermaidSVG(source, {
     ...Object.fromEntries(COLOR_KEYS.filter(key => colors[key]).map(key => [key, colors[key]])),
     transparent: true,
     padding: card ? CARD_PADDING : PADDING,
@@ -136,7 +196,7 @@ export function renderPicture(item, request) {
   if (!(width > 0 && height > 0)) throw new Error('nothing to draw')
 
   const fonts = pickFonts({ font: request.font })
-  if (!WIDE_SCRIPT.test(item.source)) fonts.files = [fonts.sans?.file, fonts.mono?.file].filter(Boolean)
+  if (!WIDE_SCRIPT.test(source)) fonts.files = [fonts.sans?.file, fonts.mono?.file].filter(Boolean)
   const svg = prepareSvg(raw, colors, fonts)
   const fit = fitToCells({ width, height }, request, item.maxColumns, item.maxRows)
   const drawnWidth = width * fit.scale
@@ -160,8 +220,27 @@ export function renderPicture(item, request) {
   return { key: item.key, file, columns: fit.columns, rows: fit.rows }
 }
 
+// beautiful-mermaid gives a character one cell per UTF-16 unit: a combining
+// mark gets a cell the terminal does not draw, and a letter beyond the BMP,
+// such as 𝒜, two where the terminal draws one. Spaces after them fill those
+// cells, so the box lines after them stay in their columns.
+function fillCells(art) {
+  let out = ''
+  let owed = 0
+  for (const ch of art) {
+    const drawn = cellWidth(ch)
+    if (drawn > 0 && owed > 0) {
+      out += ' '.repeat(owed)
+      owed = 0
+    }
+    out += ch
+    owed += Math.max(0, ch.length - drawn)
+  }
+  return out + ' '.repeat(owed)
+}
+
 export function renderText(item) {
-  const art = renderMermaidASCII(item.source, { colorMode: 'none' }).replace(/\s+$/g, '')
+  const art = fillCells(renderMermaidASCII(withMath(item.source, item.math), { colorMode: 'none' })).replace(/\s+$/g, '')
   const lines = art.split('\n').map(line => line.replace(/\s+$/, ''))
   const columns = Math.max(0, ...lines.map(cellWidth))
   if (columns === 0) throw new Error('nothing to draw')

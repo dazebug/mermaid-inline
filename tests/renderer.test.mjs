@@ -6,7 +6,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 
 import { mixColors, resolveCss } from '../bin/css.mjs'
-import { cellWidth, diagramColors, fitToCells, renderPicture, renderText } from '../bin/diagram.mjs'
+import { cellWidth, diagramColors, fitToCells, renderPicture, renderText, withMath } from '../bin/diagram.mjs'
 
 const JETBRAINS = { rowPx: 48, cellRatio: 2.125, lineEm: 1.308, textScale: 1 }
 
@@ -68,6 +68,57 @@ test('auto colors follow the terminal; a named theme brings its own background a
 test('Hangul and CJK take two cells', () => {
   assert.equal(cellWidth('A→B'), 3)
   assert.equal(cellWidth('요청'), 4)
+})
+
+test('a combining mark, an accent or an arrow over a letter, takes no cell', () => {
+  assert.equal(cellWidth('x\u0304 = y\u0302'), 5)
+  assert.equal(cellWidth('v\u20d7'), 1)
+})
+
+test("box drawing keeps its columns where a label's letters carry combining marks", () => {
+  const art = renderText({ key: 'k', source: 'graph LR\n  A[x\u0304 = y\u0302] --> B[v\u20d7]', kind: 'text', maxColumns: 80 })
+  const widths = art.text.split('\n').map(cellWidth)
+  assert.deepEqual(widths, widths.map(() => art.columns), art.text)
+})
+
+test('box drawing keeps its columns where a label holds a one-cell letter from beyond the BMP', () => {
+  const script = String.fromCodePoint(0x1d49c)
+  const art = renderText({ key: 'k', source: `graph LR\n  A[${script}] --> B[x]`, kind: 'text', maxColumns: 80 })
+  const widths = art.text.split('\n').map(cellWidth)
+  assert.deepEqual(widths, widths.map(() => art.columns), art.text)
+})
+
+// The spans the mod sends for formulas in `source`: each TeX with its text.
+function spans(source, pairs) {
+  return pairs.map(([tex, text]) => {
+    const start = source.indexOf(tex)
+    return { start, end: start + tex.length, text }
+  })
+}
+
+test("a formula goes in as its text only where the diagram's structure stays as it was", () => {
+  const source = 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[$x^2$]'
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$\\lbrack y\\rbrack$', '[y]'], ['$x^2$', 'x²']])
+  assert.equal(withMath(source, math), 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[x²]')
+})
+
+test('a sequence diagram, whose labels run to the end of their line, takes every formula, and one without math is left alone', () => {
+  const source = 'sequenceDiagram\n  A->>B: $\\lvert x\\rvert$ and $x^2$'
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$x^2$', 'x²']])
+  assert.equal(withMath(source, math), 'sequenceDiagram\n  A->>B: |x| and x²')
+  assert.equal(withMath('graph LR\n  A --> B'), 'graph LR\n  A --> B')
+})
+
+test('in another diagram the parser does not read, a formula goes in only if its text adds no bracket, comma, semicolon, bar or quote', () => {
+  const source = 'xychart-beta\n  title "Growth of $x^2$"\n  x-axis [$\\binom{n}{k}$, $f(x)$, B]\n  bar [1, 2, 3]'
+  const math = spans(source, [['$x^2$', 'x²'], ['$\\binom{n}{k}$', 'C(n, k)'], ['$f(x)$', 'f(x)']])
+  assert.equal(withMath(source, math), 'xychart-beta\n  title "Growth of x²"\n  x-axis [$\\binom{n}{k}$, f(x), B]\n  bar [1, 2, 3]')
+})
+
+test('the picture and the box drawing both draw the math', () => {
+  const source = 'graph LR\n  A[$x^2$] --> B'
+  const art = renderText({ key: 'k', source, math: spans(source, [['$x^2$', 'x²']]), kind: 'text', maxColumns: 80 })
+  assert.ok(art.text.includes('x²') && !art.text.includes('$'), art.text)
 })
 
 test('box drawing for a flowchart, and an error for a diagram too wide', () => {

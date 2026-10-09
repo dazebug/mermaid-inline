@@ -161,8 +161,9 @@ function kindOf(source) {
 // A diagram's source with the formulas the mod found in it put in as their
 // Unicode text, one at a time and only where the diagram keeps its
 // structure: the text can hold a bracket or a bar, which can end a label or
-// turn it into another shape. A diagram parseMermaid reads must read the same
-// with it. A sequence diagram, whose labels run to the end of their line,
+// turn it into another shape. It can't be escaped instead: beautiful-mermaid
+// decodes no entity codes, and ends a `[…]` label at its first `]` even inside
+// quotes. A diagram parseMermaid reads must read the same with it. A sequence diagram, whose labels run to the end of their line,
 // takes every formula. Another diagram takes one whose text adds no
 // character that is syntax in a label: `\binom{n}{k}` reads as C(n, k), whose
 // comma would split an XY chart's category in two.

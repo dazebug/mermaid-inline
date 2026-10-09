@@ -1,7 +1,7 @@
 // Copied from LaTeX Inline's hooks/unicode.ts (dazebug/latex-inline), where
 // it writes math for terminals without LaTeX Inline's pictures; here it
-// writes the math in every diagram's labels. LaTeX Inline's tests cover it,
-// so a fix to one belongs in the other.
+// gives the text for the math in a diagram's labels. LaTeX Inline's tests
+// cover it, so a fix to one belongs in the other.
 //
 // LaTeX as plain Unicode text, for terminals that can't show the plugin's
 // pictures. Symbols become their characters, scripts the small letters

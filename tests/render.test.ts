@@ -100,6 +100,34 @@ test('a diagram that opens the reply carries the bullet', { options: { mode: 'on
   expect(texts).toEqual(['⏺', 'After.'])
 })
 
+const IN_LIST = '1. First\n   ```mermaid\n   graph LR\n     A --> B\n   ```\n\n   - more on the first\n2. Second'
+
+test("a diagram in a list item is drawn at the item's indent, and the rest of the item beneath it", { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE, { engineElement: true })
+  await $.session.start(SESSION)
+  const ui = await draw($, IN_LIST)
+  const [, diagram, rest, next] = await rowsOf(ui)
+  expect(diagram).toMatchObject({ type: 'Box', props: { marginTop: 1 }, children: [{ type: 'Box', props: { width: 5 } }, { type: 'Box', props: { justifyContent: 'flex-start' } }] })
+  expect(rest).toMatchObject({ type: 'Box', props: { flexDirection: 'row' }, children: [{ type: 'Box', props: { width: 5 } }, { type: 'Box', children: [{ type: 'engine', ref: 1 }] }] })
+  expect(next).toMatchObject({ type: 'Box', props: { flexDirection: 'row' }, children: ENGINE_IN_GUTTER })
+})
+
+test('the rest of a list item after its diagram goes beneath without its indent, and a tree from a mod below is moved in by it', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on, PICTURE)
+  await $.session.start(SESSION)
+  const ui = await draw($, IN_LIST)
+  const rest = (await rowsOf(ui))[2]
+  expect(rest).toMatchObject({ type: 'Box', props: { paddingLeft: 3 }, children: [{ type: 'Text', children: ['- more on the first'] }] })
+})
+
+test('a diagram in a list item still rendering shows its code block at the same indent', { options: { mode: 'on', font_metrics: 'manual' } }, async ($, on) => {
+  engine(on)
+  await $.session.start(SESSION)
+  const ui = await draw($, IN_LIST)
+  const block = (await rowsOf(ui))[1]
+  expect(block).toMatchObject({ type: 'Box', props: { paddingLeft: 3 }, children: [{ type: 'Text', children: [DIAGRAM] }] })
+})
+
 test('in text mode a diagram is drawn as box drawing', { options: { mode: 'text' } }, async ($, on) => {
   engine(on, { text: '┌───┐\n│ A │\n└───┘', columns: 5, rows: 3 })
   await $.session.start(SESSION)

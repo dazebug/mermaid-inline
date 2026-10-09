@@ -308,12 +308,19 @@ export const register: Register = (on, options) => {
     // view, it leaves that row out, and a mod cannot tell those views apart.
     // Claude Code draws a block that does not open the reply with no gutter:
     // such a block gets the gutter here.
+    // A part from inside a list item, a diagram or the rest of the item after
+    // it, is moved in here by that item's indent. Its text comes without the
+    // indent, because leading spaces do not indent markdown drawn on its own:
+    // a nested bullet would come out at the top level. A diagram there starts
+    // at the indent, under the item's text, instead of being centered like one
+    // at the top level.
     const rows = []
     let isFirst = e.props.isFirstOfReply
     for (const segment of segments) {
+      const indent = segment.indent ?? 0
       let drawing: Picture | Art | undefined
       if (segment.kind === 'mermaid') {
-        const entry = await lookup($, { source: segment.source, kind, maxColumns: width, maxRows: height })
+        const entry = await lookup($, { source: segment.source, kind, maxColumns: Math.max(10, width - indent), maxRows: height })
         const lastKey = `${kind}|${segment.source}`
         if (isDrawing(entry)) lastDrawn.set(lastKey, entry)
         drawing = entry === undefined ? lastDrawn.get(lastKey) : isDrawing(entry) ? entry : undefined
@@ -324,10 +331,17 @@ export const register: Register = (on, options) => {
         if (drawn.type === 'engine' && !isFirst) {
           rows.push(
             <Box flexDirection="row">
-              <Box width={2} flexShrink={0} />
+              <Box width={2 + indent} flexShrink={0} />
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 {drawn}
               </Box>
+            </Box>,
+          )
+        } else if (indent > 0) {
+          // A tree from a mod below brings its own gutter: move it in by the indent.
+          rows.push(
+            <Box flexDirection="column" paddingLeft={indent}>
+              {drawn}
             </Box>,
           )
         } else {
@@ -337,11 +351,11 @@ export const register: Register = (on, options) => {
         const header = segment.kind === 'mermaid' ? (segment.source.trim().split('\n')[0] ?? '').trim() : ''
         rows.push(
           <Box flexDirection="row" marginTop={1} paddingRight={1}>
-            <Box width={2} flexShrink={0}>
+            <Box width={2 + indent} flexShrink={0}>
               <Text>{isFirst ? '⏺' : ' '}</Text>
             </Box>
             {'file' in drawing ? (
-              <Box flexDirection="row" flexGrow={1} justifyContent="center">
+              <Box flexDirection="row" flexGrow={1} justifyContent={indent > 0 ? 'flex-start' : 'center'}>
                 <Image source={{ file: drawing.file, format: 'png' }} columns={drawing.columns} rows={drawing.rows} alt={`[diagram: ${header}]`} />
               </Box>
             ) : (

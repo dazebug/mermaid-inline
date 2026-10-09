@@ -42,11 +42,28 @@ type Fence = {
 }
 // What a line sits in: its containers, outermost first, and the fenced code
 // block it opens, if it opens one. `lazy` marks a line that continues a
-// paragraph from outside some of the paragraph's containers.
-type Line = { containers: Container[]; fence?: Fence; lazy?: true }
+// paragraph from outside some of the paragraph's containers; `code`, a line
+// of code in a fenced or indented code block.
+type Line = { containers: Container[]; fence?: Fence; lazy?: true; code?: true }
 
 function indentOf(line: string): number {
   return /^ */.exec(line)?.[0].length ?? 0
+}
+
+// A line with the tabs in its indent and, unless it is code, after its `>`
+// and list markers turned into spaces up to the next multiple of 4 columns,
+// which is how CommonMark reads tabs that set block structure.
+function expandTabs(line: string, code = false): string {
+  let out = ''
+  let at = 0
+  for (;;) {
+    for (; line[at] === ' ' || line[at] === '\t'; at++) out += line[at] === '\t' ? ' '.repeat(4 - (out.length % 4)) : ' '
+    const rest = line.slice(at)
+    const marker = code ? undefined : rest.startsWith('>') ? '>' : LIST_MARKER.exec(rest)?.[0]
+    if (!marker) return out + rest
+    out += marker
+    at += marker.length
+  }
 }
 
 function dedent(line: string, columns: number): string {
@@ -128,8 +145,8 @@ function scan(lines: string[]): Line[] {
           open.end = i
           open.stop = i + 1
           open = null
-        }
-        out.push({ containers })
+          out.push({ containers })
+        } else out.push({ containers, code: true })
         continue
       }
       open.stop = i
@@ -148,12 +165,15 @@ function scan(lines: string[]): Line[] {
     let column = containers[containers.length - 1]?.column ?? 0
     let at = start
     let fence: Fence | undefined
+    let code = false
     while (line.slice(at).trim() !== '') {
       const lead = indentOf(line.slice(at))
       const text = line.slice(at + lead)
       if (lead >= 4) {
-        // Indented code, or more of the paragraph it would interrupt.
+        // Indented code, or more of the paragraph it would interrupt. The
+        // line is code alone if it opened no container on the way.
         paragraph = interrupting
+        code = !interrupting && containers.length === matched
         break
       }
       if (text.startsWith('>')) {
@@ -194,7 +214,7 @@ function scan(lines: string[]): Line[] {
       paragraph = true
       break
     }
-    out.push(fence ? { containers, fence } : { containers })
+    out.push(fence ? { containers, fence } : code ? { containers, code: true } : { containers })
   }
   return out
 }
@@ -246,7 +266,10 @@ function pushText(out: Segment[], lines: string[]): void {
 // it had.
 export function splitReply(text: string): Segment[] {
   const lines = text.split('\n')
-  const scanned = scan(lines)
+  // Text at the top level keeps the reply's own characters; the scanner, the
+  // diagrams and the text cut out of an item read tabs as their columns.
+  const expanded = lines.map(line => expandTabs(line))
+  const scanned = scan(expanded)
   const out: Segment[] = []
   let pending: string[] = []
   let i = 0
@@ -263,14 +286,15 @@ export function splitReply(text: string): Segment[] {
       i = fence.stop
       continue
     }
-    const markers = (lines[i] ?? '').slice(0, fence.column).trimEnd()
+    const markers = (expanded[i] ?? '').slice(0, fence.column).trimEnd()
     // Alone under a paragraph, a marker would continue or underline it; a
     // blank line keeps it an item.
     if (markers.trim() !== '') pending.push(...(fence.interrupts ? ['', markers] : [markers]))
     pushText(out, pending)
     pending = []
-    const source = lines.slice(i + 1, fence.end).map(content => dedent(content, fence.indent))
-    const raw = [(lines[i] ?? '').slice(fence.column), ...lines.slice(i + 1, fence.end + 1).map(row => dedent(row, fence.column))]
+    const code = lines.slice(i + 1, fence.end + 1).map(row => expandTabs(row, true))
+    const source = code.slice(0, -1).map(content => dedent(content, fence.indent))
+    const raw = [(expanded[i] ?? '').slice(fence.column), ...code.map(row => dedent(row, fence.column))]
     out.push(withIndent({ kind: 'mermaid', source: source.join('\n'), raw: raw.join('\n') }, fence.column))
     i = fence.end + 1
     const around = scanned[fence.start]?.containers ?? []
@@ -281,7 +305,8 @@ export function splitReply(text: string): Segment[] {
       if (at === 0) break
       const run: string[] = []
       while (i < lines.length && ((lines[i] ?? '').trim() === '' || anchorOf(scanned[i]?.containers ?? [], around) === at)) {
-        run.push(continued(lines[i] ?? '', scanned[i], at))
+        const entry = scanned[i]
+        run.push(entry?.code ? dedent(expandTabs(lines[i] ?? '', true), at) : continued(expanded[i] ?? '', entry, at))
         i++
       }
       for (const segment of splitReply(run.join('\n'))) out.push(withIndent(segment, (segment.indent ?? 0) + at))

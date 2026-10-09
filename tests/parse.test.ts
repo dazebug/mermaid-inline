@@ -144,6 +144,28 @@ test('a lazy line after a diagram stays in its paragraph when the item is cut ou
   ])
 })
 
+test('a tab in the indent or after a marker counts up to the next multiple of four columns', () => {
+  const diagram = { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 4 }
+  const child = { kind: 'text', text: '- child', indent: 4 }
+  const rest = '\n    ```mermaid\n    graph LR\n      A --> B\n    ```\n    - child'
+  expect(splitReply('-\tItem' + rest)).toEqual([{ kind: 'text', text: '-\tItem' }, diagram, child])
+  expect(splitReply('-   Item' + rest)).toEqual([{ kind: 'text', text: '-   Item' }, diagram, child])
+  expect(splitReply('- Item\n\t```mermaid\n\tgraph LR\n\t```')).toEqual([
+    { kind: 'text', text: '- Item' },
+    { kind: 'mermaid', source: 'graph LR', raw: '  ```mermaid\n  graph LR\n  ```', indent: 2 },
+  ])
+})
+
+test("a tab after a marker in the rest of an item keeps that item's columns, and a diagram keeps the tabs in its code", () => {
+  expect(splitReply('- A\n  ```mermaid\n  graph LR\n  ```\n  -\tchild\n    ```mermaid\n    graph LR\n    ```')).toEqual([
+    { kind: 'text', text: '- A' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 2 },
+    { kind: 'text', text: '- child', indent: 2 },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 4 },
+  ])
+  expect(splitReply('```mermaid\n1.\tx\n```')).toEqual([{ kind: 'mermaid', source: '1.\tx', raw: '```mermaid\n1.\tx\n```' }])
+})
+
 test('a fence indented four spaces outside a list is an indented code block, not a diagram', () => {
   const reply = 'Example:\n\n    ```mermaid\n    graph LR\n    ```'
   expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])

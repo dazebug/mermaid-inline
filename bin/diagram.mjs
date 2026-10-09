@@ -146,18 +146,36 @@ function structureOf(source) {
   }
 }
 
+// Characters that are syntax in some diagram's labels: a bracket ends a
+// label or a list, a comma or a semicolon divides one, a bar or a quote
+// ends one.
+const LABEL_SYNTAX = /[[\](){},;|"]/g
+
+// The word that names a diagram's kind: its first, past blank lines and
+// comments.
+function kindOf(source) {
+  const line = source.split('\n').find(row => row.trim() !== '' && !row.trim().startsWith('%%')) ?? ''
+  return line.trim().split(/\s+/)[0] ?? ''
+}
+
 // A diagram's source with the formulas the mod found in it put in as their
-// Unicode text, one at a time and only where parseMermaid reads the diagram
-// the same way: the text can hold a bracket or a bar, which can end a label
-// or turn it into another shape. A diagram parseMermaid can't read, such as
-// a sequence diagram, takes every formula.
+// Unicode text, one at a time and only where the diagram keeps its
+// structure: the text can hold a bracket or a bar, which can end a label or
+// turn it into another shape. A diagram parseMermaid reads must read the same
+// with it. A sequence diagram, whose labels run to the end of their line,
+// takes every formula. Another diagram takes one whose text adds no
+// character that is syntax in a label: `\binom{n}{k}` reads as C(n, k), whose
+// comma would split an XY chart's category in two.
 export function withMath(source, math = []) {
   const base = structureOf(source)
+  const lineLabels = base === undefined && kindOf(source) === 'sequenceDiagram'
   let out = source
   let shift = 0
   for (const { start, end, text } of math) {
+    const tex = source.slice(start, end)
     const tried = out.slice(0, start + shift) + text + out.slice(end + shift)
-    if (base !== undefined && structureOf(tried) !== base) continue
+    const keeps = base !== undefined ? structureOf(tried) === base : lineLabels || [...text.matchAll(LABEL_SYNTAX)].every(([ch]) => tex.includes(ch))
+    if (!keeps) continue
     out = tried
     shift += text.length - (end - start)
   }

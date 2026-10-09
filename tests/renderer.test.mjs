@@ -98,21 +98,27 @@ function spans(source, pairs) {
 
 test("a formula goes in as its text only where the diagram's structure stays as it was", () => {
   const source = 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[$x^2$]'
-  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$\\lbrack y\\rbrack$', '[y]'], ['$x^2$', 'x\u00b2']])
-  assert.equal(withMath(source, math), 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[x\u00b2]')
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$\\lbrack y\\rbrack$', '[y]'], ['$x^2$', 'x²']])
+  assert.equal(withMath(source, math), 'graph LR\n  A -->|$\\lvert x\\rvert$| B\n  B --> C[$\\lbrack y\\rbrack$]\n  C --> D[x²]')
 })
 
-test('a diagram the parser does not read takes every formula, and one without math is left alone', () => {
+test('a sequence diagram, whose labels run to the end of their line, takes every formula, and one without math is left alone', () => {
   const source = 'sequenceDiagram\n  A->>B: $\\lvert x\\rvert$ and $x^2$'
-  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$x^2$', 'x\u00b2']])
-  assert.equal(withMath(source, math), 'sequenceDiagram\n  A->>B: |x| and x\u00b2')
+  const math = spans(source, [['$\\lvert x\\rvert$', '|x|'], ['$x^2$', 'x²']])
+  assert.equal(withMath(source, math), 'sequenceDiagram\n  A->>B: |x| and x²')
   assert.equal(withMath('graph LR\n  A --> B'), 'graph LR\n  A --> B')
+})
+
+test('in another diagram the parser does not read, a formula goes in only if its text adds no bracket, comma, semicolon, bar or quote', () => {
+  const source = 'xychart-beta\n  title "Growth of $x^2$"\n  x-axis [$\\binom{n}{k}$, $f(x)$, B]\n  bar [1, 2, 3]'
+  const math = spans(source, [['$x^2$', 'x²'], ['$\\binom{n}{k}$', 'C(n, k)'], ['$f(x)$', 'f(x)']])
+  assert.equal(withMath(source, math), 'xychart-beta\n  title "Growth of x²"\n  x-axis [$\\binom{n}{k}$, f(x), B]\n  bar [1, 2, 3]')
 })
 
 test('the picture and the box drawing both draw the math', () => {
   const source = 'graph LR\n  A[$x^2$] --> B'
-  const art = renderText({ key: 'k', source, math: spans(source, [['$x^2$', 'x\u00b2']]), kind: 'text', maxColumns: 80 })
-  assert.ok(art.text.includes('x\u00b2') && !art.text.includes('$'), art.text)
+  const art = renderText({ key: 'k', source, math: spans(source, [['$x^2$', 'x²']]), kind: 'text', maxColumns: 80 })
+  assert.ok(art.text.includes('x²') && !art.text.includes('$'), art.text)
 })
 
 test('box drawing for a flowchart, and an error for a diagram too wide', () => {

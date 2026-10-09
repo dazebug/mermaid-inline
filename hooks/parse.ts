@@ -24,15 +24,17 @@ const SETEXT_UNDERLINE = /^(?:=+|-+)[ \t]*$/
 // its parent's.
 type Container = { id: number; column: number; width: number; quote?: true }
 // A fenced code block: its opening line, its closing line (-1 while open),
-// the line after it, the column its fence starts at, the content column of
-// the item it is in, and its fence. `interrupts` says its line, when it
-// opens the block after list markers, interrupts a paragraph; `quoted`, that
-// it is in a block quote.
+// the line after it, the column its fence starts at and how far that is
+// past where its container's content starts, the content column of the item
+// it is in, and its fence. `interrupts` says its line, when it opens the
+// block after list markers, interrupts a paragraph; `quoted`, that it is in
+// a block quote.
 type Fence = {
   start: number
   end: number
   stop: number
   indent: number
+  offset: number
   column: number
   info: string
   char: string
@@ -42,28 +44,43 @@ type Fence = {
 }
 // What a line sits in: its containers, outermost first, and the fenced code
 // block it opens, if it opens one. `lazy` marks a line that continues a
-// paragraph from outside some of the paragraph's containers; `code`, a line
-// of code in a fenced or indented code block.
-type Line = { containers: Container[]; fence?: Fence; lazy?: true; code?: true }
+// paragraph from outside some of the paragraph's containers; `content`, on a
+// line of a fenced or indented code block, is the column its code starts at.
+type Line = { containers: Container[]; fence?: Fence; lazy?: true; content?: number }
 
 function indentOf(line: string): number {
   return /^ */.exec(line)?.[0].length ?? 0
 }
 
-// A line with the tabs in its indent and, unless it is code, after its `>`
-// and list markers turned into spaces up to the next multiple of 4 columns,
-// which is how CommonMark reads tabs that set block structure.
-function expandTabs(line: string, code = false): string {
+// A line with the tabs in its indent and after its `>` and list markers
+// turned into spaces up to the next multiple of 4 columns, which is how
+// CommonMark reads tabs that set block structure. Each character keeps its
+// column.
+function expandTabs(line: string): string {
   let out = ''
   let at = 0
   for (;;) {
     for (; line[at] === ' ' || line[at] === '\t'; at++) out += line[at] === '\t' ? ' '.repeat(4 - (out.length % 4)) : ' '
     const rest = line.slice(at)
-    const marker = code ? undefined : rest.startsWith('>') ? '>' : LIST_MARKER.exec(rest)?.[0]
+    const marker = rest.startsWith('>') ? '>' : LIST_MARKER.exec(rest)?.[0]
     if (!marker) return out + rest
     out += marker
     at += marker.length
   }
+}
+
+// The part of a line from a column on. A tab across that column gives the
+// columns it has left as spaces, as CommonMark does when a container takes
+// part of a tab.
+function fromColumn(line: string, column: number): string {
+  let at = 0
+  for (let i = 0; i < line.length; i++) {
+    if (at >= column) return line.slice(i)
+    const next = line[i] === '\t' ? at + 4 - (at % 4) : at + 1
+    if (next > column) return ' '.repeat(next - column) + line.slice(i + 1)
+    at = next
+  }
+  return ''
 }
 
 function dedent(line: string, columns: number): string {
@@ -146,7 +163,7 @@ function scan(lines: string[]): Line[] {
           open.stop = i + 1
           open = null
           out.push({ containers })
-        } else out.push({ containers, code: true })
+        } else out.push({ containers, content: start + Math.min(open.offset, indentOf(rest)) })
         continue
       }
       open.stop = i
@@ -165,15 +182,14 @@ function scan(lines: string[]): Line[] {
     let column = containers[containers.length - 1]?.column ?? 0
     let at = start
     let fence: Fence | undefined
-    let code = false
+    let content: number | undefined
     while (line.slice(at).trim() !== '') {
       const lead = indentOf(line.slice(at))
       const text = line.slice(at + lead)
       if (lead >= 4) {
-        // Indented code, or more of the paragraph it would interrupt. The
-        // line is code alone if it opened no container on the way.
+        // Indented code, or more of the paragraph it would interrupt.
         paragraph = interrupting
-        code = !interrupting && containers.length === matched
+        if (!interrupting) content = at + 4
         break
       }
       if (text.startsWith('>')) {
@@ -185,7 +201,7 @@ function scan(lines: string[]): Line[] {
       }
       const opening = openingAt(text)
       if (opening) {
-        fence = { start: i, end: -1, stop: lines.length, indent: at + lead, column, ...opening, interrupts, quoted: containers.some(container => container.quote) }
+        fence = { start: i, end: -1, stop: lines.length, indent: at + lead, offset: lead, column, ...opening, interrupts, quoted: containers.some(container => container.quote) }
         open = fence
         break
       }
@@ -214,7 +230,7 @@ function scan(lines: string[]): Line[] {
       paragraph = true
       break
     }
-    out.push(fence ? { containers, fence } : code ? { containers, code: true } : { containers })
+    out.push(fence ? { containers, fence } : content !== undefined ? { containers, content } : { containers })
   }
   return out
 }
@@ -266,10 +282,20 @@ function pushText(out: Segment[], lines: string[]): void {
 // it had.
 export function splitReply(text: string): Segment[] {
   const lines = text.split('\n')
-  // Text at the top level keeps the reply's own characters; the scanner, the
-  // diagrams and the text cut out of an item read tabs as their columns.
-  const expanded = lines.map(line => expandTabs(line))
+  // Text at the top level keeps the reply's own characters. The scanner, and
+  // the text cut out of an item, read tabs that set block structure as their
+  // columns, since taking columns off would move a tab to another tab stop.
+  const expanded = lines.map(expandTabs)
   const scanned = scan(expanded)
+  // A line as the scanner reads it, with the reply's own characters from
+  // where its code starts: a tab in code is code, as in a Makefile recipe.
+  // A tab that starts the code keeps its character but not its width once
+  // its line moves left by a number of columns that is no multiple of 4.
+  const faithful = (k: number): string => {
+    const content = scanned[k]?.content
+    const line = expanded[k] ?? ''
+    return content === undefined ? line : line.slice(0, content) + fromColumn(lines[k] ?? '', content)
+  }
   const out: Segment[] = []
   let pending: string[] = []
   let i = 0
@@ -292,9 +318,9 @@ export function splitReply(text: string): Segment[] {
     if (markers.trim() !== '') pending.push(...(fence.interrupts ? ['', markers] : [markers]))
     pushText(out, pending)
     pending = []
-    const code = lines.slice(i + 1, fence.end + 1).map(row => expandTabs(row, true))
-    const source = code.slice(0, -1).map(content => dedent(content, fence.indent))
-    const raw = [(expanded[i] ?? '').slice(fence.column), ...code.map(row => dedent(row, fence.column))]
+    const rows = Array.from({ length: fence.end - i }, (_, k) => faithful(i + 1 + k))
+    const source = rows.slice(0, -1).map(content => dedent(content, fence.indent))
+    const raw = [(expanded[i] ?? '').slice(fence.column), ...rows.map(row => dedent(row, fence.column))]
     out.push(withIndent({ kind: 'mermaid', source: source.join('\n'), raw: raw.join('\n') }, fence.column))
     i = fence.end + 1
     const around = scanned[fence.start]?.containers ?? []
@@ -306,7 +332,7 @@ export function splitReply(text: string): Segment[] {
       const run: string[] = []
       while (i < lines.length && ((lines[i] ?? '').trim() === '' || anchorOf(scanned[i]?.containers ?? [], around) === at)) {
         const entry = scanned[i]
-        run.push(entry?.code ? dedent(expandTabs(lines[i] ?? '', true), at) : continued(expanded[i] ?? '', entry, at))
+        run.push(entry?.content !== undefined ? dedent(faithful(i), at) : continued(expanded[i] ?? '', entry, at))
         i++
       }
       for (const segment of splitReply(run.join('\n'))) out.push(withIndent(segment, (segment.indent ?? 0) + at))

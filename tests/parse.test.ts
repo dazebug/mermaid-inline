@@ -166,6 +166,22 @@ test("a tab after a marker in the rest of an item keeps that item's columns, and
   expect(splitReply('```mermaid\n1.\tx\n```')).toEqual([{ kind: 'mermaid', source: '1.\tx', raw: '```mermaid\n1.\tx\n```' }])
 })
 
+test('code after a diagram in a list item keeps its own tabs, past the columns the items take', () => {
+  const diagram = { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 2 }
+  expect(splitReply('- Item\n  ```mermaid\n  graph LR\n  ```\n\n  ```makefile\n  target:\n  \techo hello\n  ```')).toEqual([
+    { kind: 'text', text: '- Item' },
+    diagram,
+    { kind: 'text', text: '```makefile\ntarget:\n\techo hello\n```', indent: 2 },
+  ])
+  // The second tab is half the item's indent and half code: its code half
+  // comes out as spaces, as CommonMark reads it.
+  expect(splitReply('- Item\n  ```mermaid\n  graph LR\n  ```\n  -   B\n      ```sh\n  \t\techo\n      ```')).toEqual([
+    { kind: 'text', text: '- Item' },
+    diagram,
+    { kind: 'text', text: '-   B\n    ```sh\n      echo\n    ```', indent: 2 },
+  ])
+})
+
 test('a fence indented four spaces outside a list is an indented code block, not a diagram', () => {
   const reply = 'Example:\n\n    ```mermaid\n    graph LR\n    ```'
   expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])

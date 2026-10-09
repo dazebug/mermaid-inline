@@ -1,7 +1,7 @@
 {
   "name": "mermaid-inline",
   "displayName": "Mermaid Inline",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Draws the Mermaid diagrams in Claude's replies: as pictures in Ghostty, cmux and kitty, and as Unicode box drawing in other terminals",
   "author": {
     "name": "dazebug",

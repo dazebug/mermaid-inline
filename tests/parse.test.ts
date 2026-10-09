@@ -71,6 +71,79 @@ test('a list marker inside an indented code block is code, and so is a fence und
   expect(splitReply(inItem)).toEqual([{ kind: 'text', text: inItem }])
 })
 
+test('a thematic break is no list item, so indented code under it stays code', () => {
+  const reply = '* * *\n\n    ```mermaid\n    graph LR\n      A --> B\n    ```'
+  expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
+})
+
+test('a code block opened on a list marker line keeps a mermaid fence inside it as text', () => {
+  const reply = '- ````markdown\n  ```mermaid\n  graph LR\n    A --> B\n  ```\n  ````'
+  expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
+})
+
+test('a diagram opened on a list marker line, or under an empty marker, is in that item', () => {
+  const diagram = { kind: 'mermaid', source: 'graph LR\n  A --> B', raw: '```mermaid\ngraph LR\n  A --> B\n```', indent: 2 }
+  const child = { kind: 'text', text: '- child', indent: 2 }
+  expect(splitReply('- ```mermaid\n  graph LR\n    A --> B\n  ```\n  - child')).toEqual([{ kind: 'text', text: '-' }, diagram, child])
+  expect(splitReply('-\n  ```mermaid\n  graph LR\n    A --> B\n  ```\n  - child')).toEqual([{ kind: 'text', text: '-' }, diagram, child])
+})
+
+test('a fence opened on a marker line under a paragraph leaves its marker as an item, not an underline', () => {
+  expect(splitReply('Intro\n- ```mermaid\n  graph LR\n  ```')).toEqual([
+    { kind: 'text', text: 'Intro\n\n-' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 2 },
+  ])
+})
+
+test('one line can open nested items, and an item can start with indented code', () => {
+  expect(splitReply('- - ```mermaid\n    graph LR\n    ```')).toEqual([
+    { kind: 'text', text: '- -' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 4 },
+  ])
+  expect(splitReply('-     code\n  ```mermaid\n  graph LR\n  ```')).toEqual([
+    { kind: 'text', text: '-     code' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 2 },
+  ])
+})
+
+test('an item opened with no text ends at a blank line', () => {
+  expect(splitReply('-\n\n  ```mermaid\n  graph LR\n  ```')).toEqual([
+    { kind: 'text', text: '-' },
+    { kind: 'mermaid', source: 'graph LR', raw: '  ```mermaid\n  graph LR\n  ```' },
+  ])
+})
+
+test('a numbered item that does not start at 1 cannot interrupt a paragraph', () => {
+  expect(splitReply('Steps:\n2. two\n   ```mermaid\n   graph LR\n   ```')).toEqual([
+    { kind: 'text', text: 'Steps:\n2. two' },
+    { kind: 'mermaid', source: 'graph LR', raw: '   ```mermaid\n   graph LR\n   ```' },
+  ])
+})
+
+test('a line without `>` leaves a block quote, so it does not interrupt or continue the code in it', () => {
+  expect(splitReply('> A quote.\n2. Second\n   ```mermaid\n   graph LR\n   ```')).toEqual([
+    { kind: 'text', text: '> A quote.\n2. Second' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 3 },
+  ])
+  expect(splitReply('- > ```js\n  > x\ny\n  ```mermaid\n  graph LR\n  ```')).toEqual([
+    { kind: 'text', text: '- > ```js\n  > x\ny' },
+    { kind: 'mermaid', source: 'graph LR', raw: '  ```mermaid\n  graph LR\n  ```' },
+  ])
+})
+
+test('a lazy line after a diagram stays in its paragraph when the item is cut out', () => {
+  expect(splitReply('- Item\n  ```mermaid\n  graph LR\n  ```\n  more\n===')).toEqual([
+    { kind: 'text', text: '- Item' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 2 },
+    { kind: 'text', text: 'more\n    ===', indent: 2 },
+  ])
+  expect(splitReply('   - Item\n     ```mermaid\n     graph LR\n     ```\n     text\n    ```mermaid')).toEqual([
+    { kind: 'text', text: '   - Item' },
+    { kind: 'mermaid', source: 'graph LR', raw: '```mermaid\ngraph LR\n```', indent: 5 },
+    { kind: 'text', text: 'text\n    ```mermaid', indent: 5 },
+  ])
+})
+
 test('a fence indented four spaces outside a list is an indented code block, not a diagram', () => {
   const reply = 'Example:\n\n    ```mermaid\n    graph LR\n    ```'
   expect(splitReply(reply)).toEqual([{ kind: 'text', text: reply }])
